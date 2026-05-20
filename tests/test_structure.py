@@ -1,0 +1,133 @@
+"""Tests for the structure analysis module."""
+
+from k8s_rag.preprocessing.structure import (
+    estimate_tokens,
+    classify_code_block,
+    analyze_structure,
+)
+
+
+# --- estimate_tokens ---
+
+def test_estimate_tokens_rough_accuracy():
+    text = "This is a ten word sentence with some extra words."
+    tokens = estimate_tokens(text)
+    # 10 words * 1.3 = 13
+    assert 10 <= tokens <= 16
+
+
+def test_estimate_tokens_empty():
+    assert estimate_tokens("") == 0
+
+
+# --- classify_code_block ---
+
+def test_classify_yaml_manifest():
+    assert classify_code_block("yaml", "apiVersion: v1\nkind: Pod") == "yaml-manifest"
+
+
+def test_classify_yaml_without_api_version():
+    assert classify_code_block("yaml", "maxContainerRestartPeriod: 100s") == "yaml"
+
+
+def test_classify_kubectl_command():
+    assert classify_code_block("shell", "kubectl get pods -n default") == "kubectl-command"
+
+
+def test_classify_plain_shell():
+    assert classify_code_block("shell", "echo hello") == "shell"
+
+
+def test_classify_unknown_language():
+    assert classify_code_block("go", "func main() {}") == "go"
+
+
+def test_classify_no_language():
+    assert classify_code_block("", "some text") == "text"
+
+
+# --- analyze_structure ---
+
+def test_detects_headings():
+    content = "# Title\n\nSome text.\n\n## Section A\n\nMore text."
+    result = analyze_structure(content)
+    assert len(result["headings"]) == 2
+    assert result["headings"][0]["level"] == 1
+    assert result["headings"][0]["text"] == "Title"
+    assert result["headings"][1]["level"] == 2
+    assert result["headings"][1]["text"] == "Section A"
+
+
+def test_extracts_heading_anchors():
+    content = "## Pod lifetime {#pod-lifetime}\n\nSome text."
+    result = analyze_structure(content)
+    assert result["headings"][0]["anchor"] == "pod-lifetime"
+    assert result["headings"][0]["text"] == "Pod lifetime"
+
+
+def test_ignores_headings_inside_code_blocks():
+    content = "## Real heading\n\n```yaml\n# This is a YAML comment\nkind: Pod\n```\n\nMore text."
+    result = analyze_structure(content)
+    assert len(result["headings"]) == 1
+    assert result["headings"][0]["text"] == "Real heading"
+
+
+def test_detects_code_blocks():
+    content = "Text.\n\n```yaml\napiVersion: v1\nkind: Pod\n```\n\nMore text."
+    result = analyze_structure(content)
+    assert len(result["code_blocks"]) == 1
+    assert result["code_blocks"][0]["code_type"] == "yaml-manifest"
+    assert result["code_blocks"][0]["language"] == "yaml"
+
+
+def test_detects_tables():
+    content = "Text.\n\n| Col A | Col B |\n|-------|-------|\n| 1 | 2 |\n\nMore text."
+    result = analyze_structure(content)
+    assert len(result["tables"]) == 1
+
+
+def test_table_not_detected_inside_code_block():
+    content = "```\n| A | B |\n|---|---|\n| 1 | 2 |\n```"
+    result = analyze_structure(content)
+    assert len(result["tables"]) == 0
+
+
+def test_sections_have_token_counts():
+    content = "## Section A\n\nSome content here.\n\n## Section B\n\nMore content."
+    result = analyze_structure(content)
+    for section in result["sections"]:
+        assert "token_count" in section
+        assert section["token_count"] >= 0
+
+
+def test_section_flags_code_and_tables():
+    content = (
+        "## With code\n\n```yaml\napiVersion: v1\nkind: Pod\n```\n\n"
+        "## With table\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n"
+        "## Plain\n\nJust text."
+    )
+    result = analyze_structure(content)
+
+    code_section = [s for s in result["sections"] if s["heading_text"] == "With code"][0]
+    assert code_section["has_code"] is True
+    assert "yaml-manifest" in code_section["code_types"]
+
+    table_section = [s for s in result["sections"] if s["heading_text"] == "With table"][0]
+    assert table_section["has_table"] is True
+
+    plain_section = [s for s in result["sections"] if s["heading_text"] == "Plain"][0]
+    assert plain_section["has_code"] is False
+    assert plain_section["has_table"] is False
+
+
+def test_intro_section_before_first_heading():
+    content = "Some intro text.\n\n## First heading\n\nContent."
+    result = analyze_structure(content)
+    assert result["sections"][0]["heading_text"] == "(intro)"
+    assert result["sections"][0]["heading_level"] == 0
+
+
+def test_no_intro_section_when_heading_first():
+    content = "## First heading\n\nContent."
+    result = analyze_structure(content)
+    assert result["sections"][0]["heading_text"] == "First heading"
