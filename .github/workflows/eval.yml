@@ -7,11 +7,9 @@ on:
 jobs:
   quality-gate:
     runs-on: ubuntu-latest
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-      AWS_DEFAULT_REGION: us-east-1
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout
@@ -22,17 +20,16 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-east-1
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,eval]"
-
-      - name: Validate AWS credentials are configured
-        run: |
-          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
-            echo "AWS credentials are required for ingestion/evaluation."
-            exit 1
-          fi
 
       - name: Run unit tests
         run: pytest -q
