@@ -18,6 +18,10 @@ dependencies = [
 dev = [
     "pytest>=7.0",
 ]
+eval = [
+    "datasets",
+    "ragas",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

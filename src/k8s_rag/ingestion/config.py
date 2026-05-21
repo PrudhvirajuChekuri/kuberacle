@@ -33,6 +33,11 @@ class RAGConfig:
         prompt_directory: Prompt root directory.
         temperature: Generation temperature.
         max_tokens: Max generated tokens.
+        evaluation_dataset_path: Default golden eval dataset path.
+        eval_retrieval_recall_at_k_threshold: Min retrieval recall gate.
+        eval_citation_precision_threshold: Min citation precision gate.
+        eval_abstention_accuracy_threshold: Min abstention accuracy gate.
+        eval_non_empty_answer_rate_threshold: Min non-empty answer gate.
     """
 
     aws_region: str
@@ -57,6 +62,11 @@ class RAGConfig:
     prompt_directory: str
     temperature: float
     max_tokens: int
+    evaluation_dataset_path: str
+    eval_retrieval_recall_at_k_threshold: float
+    eval_citation_precision_threshold: float
+    eval_abstention_accuracy_threshold: float
+    eval_non_empty_answer_rate_threshold: float
 
 
 def load_rag_config(config_path: str | Path) -> RAGConfig:
@@ -76,6 +86,7 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
     reranker = data.get("reranker", {})
     citation = data.get("citation", {})
     prompts = data.get("prompts", {})
+    evaluation = data.get("evaluation", {})
 
     return RAGConfig(
         aws_region=data["aws"]["region"],
@@ -100,4 +111,19 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
         prompt_directory=str(prompts.get("directory", "configs/prompts")),
         temperature=float(data["generation"]["temperature"]),
         max_tokens=int(data["generation"]["max_tokens"]),
+        evaluation_dataset_path=str(
+            evaluation.get("dataset_path", "evals/golden/v1.jsonl")
+        ),
+        eval_retrieval_recall_at_k_threshold=float(
+            evaluation.get("retrieval_recall_at_k_threshold", 0.70)
+        ),
+        eval_citation_precision_threshold=float(
+            evaluation.get("citation_precision_threshold", 0.80)
+        ),
+        eval_abstention_accuracy_threshold=float(
+            evaluation.get("abstention_accuracy_threshold", 0.90)
+        ),
+        eval_non_empty_answer_rate_threshold=float(
+            evaluation.get("non_empty_answer_rate_threshold", 0.90)
+        ),
     )

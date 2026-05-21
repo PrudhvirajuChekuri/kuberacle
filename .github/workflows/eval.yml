@@ -1,0 +1,65 @@
+name: rag-evaluation
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-east-1
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,eval]"
+
+      - name: Run unit tests
+        run: pytest -q
+
+      - name: Prepare corpus
+        run: |
+          python scripts/download_data.py
+          python scripts/preprocess.py
+
+      - name: Build vector index
+        run: python scripts/ingest.py
+
+      - name: Run deterministic evaluation gate
+        run: |
+          python scripts/evaluate.py \
+            --mode deterministic \
+            --json-out artifacts/evals/ci-eval.json \
+            --md-out artifacts/evals/ci-eval.md
+
+      - name: Run optional full evaluation report
+        continue-on-error: true
+        run: |
+          python scripts/evaluate.py \
+            --mode full \
+            --json-out artifacts/evals/ci-eval-full.json \
+            --md-out artifacts/evals/ci-eval-full.md
+
+      - name: Upload evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-artifacts
+          path: artifacts/evals/
