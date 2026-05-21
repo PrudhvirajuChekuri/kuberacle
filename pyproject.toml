@@ -9,6 +9,8 @@ description = "Production-grade RAG system for Kubernetes documentation"
 requires-python = ">=3.10"
 dependencies = [
     "pyyaml>=6.0",
+    "boto3",
+    "chromadb",
 ]
 
 [project.optional-dependencies]

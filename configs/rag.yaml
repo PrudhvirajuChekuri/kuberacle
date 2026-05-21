@@ -1,0 +1,17 @@
+aws:
+  region: "us-east-1"
+
+models:
+  embedding: "amazon.titan-embed-text-v2:0"
+  generation: "amazon.nova-lite-v1:0"
+
+vector_store:
+  collection_name: "k8s_docs_chunks"
+  persist_directory: "data/vector/chroma"
+
+retrieval:
+  top_k: 5
+
+generation:
+  temperature: 0.2
+  max_tokens: 600

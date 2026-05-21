@@ -3,6 +3,7 @@ data/raw/
 data/examples/
 data/includes/
 data/processed/
+data/vector
 
 # Python
 __pycache__/
