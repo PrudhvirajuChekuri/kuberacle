@@ -8,7 +8,7 @@ Ask questions about Kubernetes and get grounded answers with citations to the of
 
 🚧 **In Development**
 
-Preprocessing is complete, and the baseline RAG pipeline (ingestion + semantic retrieval + cited answers) is implemented with AWS Bedrock and ChromaDB.
+Preprocessing is complete, and the baseline RAG pipeline (ingestion + hybrid retrieval + cited answers) is implemented with AWS Bedrock and ChromaDB.
 
 ## Architecture
 
@@ -32,14 +32,14 @@ Raw markdown from the `[kubernetes/website](https://github.com/kubernetes/websit
 Current baseline includes:
 - embedding chunked docs with Amazon Bedrock (`amazon.titan-embed-text-v2:0`)
 - storing vectors in ChromaDB
-- top-k semantic retrieval
+- hybrid retrieval (semantic + BM25) with rerank fallback
 - answer generation with citations using Bedrock generation models
 
 Default generation model in config is `amazon.nova-lite-v1:0`. You can switch
 to Claude models if your account has the required Bedrock throughput mode
 (on-demand or inference profile access, depending on model/version).
 
-Configuration lives in `configs/rag.yaml`.
+Configuration lives in `configs/rag.yaml`; versioned prompts live under `configs/prompts/`.
 
 ## Run RAG Pipeline
 

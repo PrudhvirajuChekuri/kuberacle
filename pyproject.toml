@@ -11,6 +11,7 @@ dependencies = [
     "pyyaml>=6.0",
     "boto3",
     "chromadb",
+    "rank-bm25",
 ]
 
 [project.optional-dependencies]
