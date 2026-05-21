@@ -10,8 +10,8 @@ from k8s_rag.preprocessing.shortcodes import (
     resolve_tabs,
     resolve_params,
     resolve_figures,
-    strip_skew,
-    strip_api_reference,
+    resolve_skew,
+    resolve_api_reference,
     strip_html_comments,
     clean_extra_whitespace,
     resolve_shortcodes,
@@ -90,6 +90,32 @@ def test_code_sample_inlines_yaml(tmp_path):
     assert "apiVersion: v1" in result
     assert "kind: Pod" in result
     assert "```" in result
+
+
+def test_code_sample_includes_source_path(tmp_path):
+    """The inlined code block should preserve the source file path."""
+    example_file = tmp_path / "pods" / "simple-pod.yaml"
+    example_file.parent.mkdir(parents=True)
+    example_file.write_text("apiVersion: v1\nkind: Pod\n")
+
+    content = '{{% code_sample file="pods/simple-pod.yaml" %}}'
+    result = resolve_code_samples(content, tmp_path)
+    assert "# Source: pods/simple-pod.yaml" in result
+    # The source comment must appear inside the fence, before the code.
+    fence_start = result.index("```yaml") + len("```yaml") + 1
+    body = result[fence_start:]
+    assert body.startswith("# Source: pods/simple-pod.yaml")
+
+
+def test_code_sample_source_uses_slash_comment_for_go(tmp_path):
+    """Go samples should use // for the source comment, not #."""
+    example_file = tmp_path / "main.go"
+    example_file.write_text("package main\n")
+
+    content = '{{% code_sample file="main.go" %}}'
+    result = resolve_code_samples(content, tmp_path)
+    assert "// Source: main.go" in result
+    assert "# Source: main.go" not in result
 
 
 def test_code_sample_missing_file(tmp_path):
@@ -196,22 +222,64 @@ def test_figure_with_title_and_caption():
     assert "A pod diagram." in result
 
 
-def test_figure_no_caption_no_title():
-    content = '{{< figure src="/img.svg" alt="diagram" class="medium" >}}'
+def test_figure_falls_back_to_alt():
+    """A figure with only an alt attribute should emit a bracketed label."""
+    content = '{{< figure src="/img.svg" alt="Pod creation diagram" class="medium" >}}'
+    assert resolve_figures(content) == "**[Figure: Pod creation diagram]**"
+
+
+def test_figure_no_text_attributes_returns_empty():
+    """A figure with no title, caption, or alt still returns empty string."""
+    content = '{{< figure src="/img.svg" class="medium" >}}'
     assert resolve_figures(content) == ""
 
 
-# --- strip functions ---
+# --- resolve_skew ---
 
-def test_strip_skew():
-    content = "Version {{< skew currentVersion >}} is required."
-    assert strip_skew(content) == "Version  is required."
+def test_resolve_skew_uses_version():
+    """skew currentVersion resolves to the version without a leading v."""
+    content = "Version v{{< skew currentVersion >}} is required."
+    assert resolve_skew(content, "v1.36") == "Version v1.36 is required."
 
 
-def test_strip_api_reference():
+def test_resolve_skew_strips_v_prefix_from_config():
+    """The 'v' prefix on the configured version must not be duplicated."""
+    content = "In Kubernetes {{< skew currentVersion >}}, the behavior changes."
+    assert resolve_skew(content, "v1.36") == "In Kubernetes 1.36, the behavior changes."
+
+
+# --- resolve_api_reference ---
+
+def test_resolve_api_reference_emits_link():
     content = '{{< api-reference page="workload-resources/pod-v1" >}}'
-    assert strip_api_reference(content) == ""
+    result = resolve_api_reference(content)
+    assert result == (
+        "[Pod API reference]"
+        "(https://kubernetes.io/docs/reference/kubernetes-api/"
+        "workload-resources/pod-v1/)"
+    )
 
+
+def test_resolve_api_reference_multiword_resource():
+    """Multi-word resources keep word boundaries in the link label."""
+    content = '{{< api-reference page="workload-resources/replica-set-v1" >}}'
+    result = resolve_api_reference(content)
+    assert "[Replica Set API reference]" in result
+    assert "workload-resources/replica-set-v1/" in result
+
+
+def test_resolve_api_reference_inline_in_sentence():
+    """The resolver must produce a sentence that reads naturally."""
+    content = (
+        "Read the {{< api-reference page=\"workload-resources/deployment-v1\" >}} "
+        "to understand the Deployment API."
+    )
+    result = resolve_api_reference(content)
+    assert "Read the [Deployment API reference]" in result
+    assert "to understand the Deployment API." in result
+
+
+# --- strip functions ---
 
 def test_strip_html_comments():
     content = "<!-- overview -->\nActual content.\n<!-- body -->"
@@ -247,10 +315,12 @@ def test_resolve_shortcodes_full_pipeline(tmp_path):
         '## {{% heading "prerequisites" %}}\n\n'
         '{{< include "prereqs.md" >}}\n\n'
         '{{% code_sample file="test.yaml" %}}\n\n'
-        '{{< feature-state for_k8s_version="v1.28" state="stable" >}}\n'
+        '{{< feature-state for_k8s_version="v1.28" state="stable" >}}\n\n'
+        "In Kubernetes {{< skew currentVersion >}} the API is stable.\n\n"
+        'See the {{< api-reference page="workload-resources/pod-v1" >}}.\n'
     )
 
-    result = resolve_shortcodes(content, examples_dir, includes_dir)
+    result = resolve_shortcodes(content, examples_dir, includes_dir, "v1.36")
 
     assert "pod" in result
     assert "container" in result
@@ -258,6 +328,21 @@ def test_resolve_shortcodes_full_pipeline(tmp_path):
     assert "## Before you begin" in result
     assert "You need a cluster." in result
     assert "apiVersion: v1" in result
+    assert "# Source: test.yaml" in result
     assert "[FEATURE STATE: v1.28 stable]" in result
+    assert "In Kubernetes 1.36 the API is stable." in result
+    assert "[Pod API reference]" in result
     assert "{{" not in result
     assert "<!--" not in result
+
+
+def test_resolve_shortcodes_default_k8s_version(tmp_path):
+    """The orchestrator falls back to v1.36 when no version is passed."""
+    examples_dir = tmp_path / "examples"
+    examples_dir.mkdir()
+    includes_dir = tmp_path / "includes"
+    includes_dir.mkdir()
+
+    content = "Kubernetes {{< skew currentVersion >}} ships today."
+    result = resolve_shortcodes(content, examples_dir, includes_dir)
+    assert "Kubernetes 1.36 ships today." in result

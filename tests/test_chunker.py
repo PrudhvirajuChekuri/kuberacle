@@ -1,5 +1,7 @@
 """Tests for the document chunking module."""
 
+import re
+
 from k8s_rag.preprocessing.chunker import (
     make_chunk_id,
     build_heading_tree,
@@ -20,6 +22,21 @@ def test_chunk_id_basic():
 def test_chunk_id_with_index():
     result = make_chunk_id("concepts/pods/_index.md", "Overview", index=1)
     assert "--1" in result
+
+
+def test_chunk_id_with_hierarchy_disambiguates_repeated_headings():
+    """Hierarchy context should avoid collisions for repeated leaf headings."""
+    a = make_chunk_id(
+        "concepts/pods/_index.md",
+        "Overview",
+        heading_hierarchy=["Pods", "Parent A", "Overview"],
+    )
+    b = make_chunk_id(
+        "concepts/pods/_index.md",
+        "Overview",
+        heading_hierarchy=["Pods", "Parent B", "Overview"],
+    )
+    assert a != b
 
 
 def test_chunk_id_strips_special_chars():
@@ -105,13 +122,13 @@ def test_metadata_propagated_to_chunks():
     content = "## Section A\n\nContent A.\n\n## Section B\n\nContent B."
     structure = analyze_structure(content)
     metadata = _make_metadata()
-    chunks = chunk_document(content, structure, metadata, ["https://k8s.io/ref"])
+    chunks = chunk_document(content, structure, metadata, [])
     for c in chunks:
         assert c["title"] == "Test Doc"
         assert c["content_type"] == "concept"
         assert c["k8s_version"] == "v1.36"
         assert c["source_url"] == "https://kubernetes.io/docs/test/doc/"
-        assert "https://k8s.io/ref" in c["cross_references"]
+        assert "cross_references" in c
 
 
 def test_chunk_ids_unique():
@@ -123,6 +140,39 @@ def test_chunk_ids_unique():
     )
     structure = analyze_structure(content)
     chunks = chunk_document(content, structure, _make_metadata(), [])
+    ids = [c["chunk_id"] for c in chunks]
+    assert len(ids) == len(set(ids)), f"Duplicate IDs found: {ids}"
+
+
+def test_chunk_ids_unique_for_repeated_child_headings_when_parents_split():
+    """Repeated child headings remain unique even after parent splitting."""
+    filler = " ".join(["word"] * 900)
+    content = (
+        "## Parent A\n\n"
+        f"{filler}\n\n"
+        "### Overview\n\n"
+        "Text A.\n\n"
+        "## Parent B\n\n"
+        f"{filler}\n\n"
+        "### Overview\n\n"
+        "Text B.\n"
+    )
+    structure = analyze_structure(content)
+    chunks = chunk_document(content, structure, _make_metadata())
+    ids = [c["chunk_id"] for c in chunks]
+    assert len(ids) == len(set(ids)), f"Duplicate IDs found: {ids}"
+
+
+def test_chunk_ids_unique_for_repeated_identical_heading_hierarchy():
+    """Repeated identical heading paths must still produce unique chunk IDs."""
+    content = (
+        "## A\n\n"
+        "First section text.\n\n"
+        "## A\n\n"
+        "Second section text.\n"
+    )
+    structure = analyze_structure(content)
+    chunks = chunk_document(content, structure, _make_metadata())
     ids = [c["chunk_id"] for c in chunks]
     assert len(ids) == len(set(ids)), f"Duplicate IDs found: {ids}"
 
@@ -155,3 +205,141 @@ def test_content_flags_accurate():
     text_chunk = [c for c in chunks if "Text" in c["heading_hierarchy"][-1]][0]
     assert text_chunk["has_code"] is False
     assert text_chunk["has_table"] is False
+
+
+# --- chunk-quality improvements ---
+
+def test_heading_anchor_id_stripped_from_content():
+    """Heading anchors {#anchor} must not appear in chunk content."""
+    content = (
+        "## Pod readiness {#pod-ready}\n\n"
+        "Some content about readiness."
+    )
+    structure = analyze_structure(content)
+    chunks = chunk_document(content, structure, _make_metadata(), [])
+    for c in chunks:
+        assert "{#" not in c["content"]
+        assert "}" not in c["content"] or "{" in c["content"]
+
+
+def test_cross_references_are_chunk_local():
+    """Each chunk's cross_references must reflect only its own links."""
+    from k8s_rag.preprocessing.links import process_links
+
+    raw_content = (
+        "## Pods\n\n"
+        "See [the docs](/docs/concepts/workloads/pods/) for details.\n\n"
+        "## Unrelated\n\n"
+        "Read about [Borg](https://research.google/pubs/borg/) here."
+    )
+    resolved, _ = process_links(raw_content)
+    structure = analyze_structure(resolved)
+    chunks = chunk_document(resolved, structure, _make_metadata())
+
+    pods_chunk = [c for c in chunks if c["heading_hierarchy"][-1] == "Pods"][0]
+    unrelated_chunk = [
+        c for c in chunks if c["heading_hierarchy"][-1] == "Unrelated"
+    ][0]
+
+    assert any("workloads/pods" in url for url in pods_chunk["cross_references"])
+    assert all("borg" not in url.lower() for url in pods_chunk["cross_references"])
+    assert any("borg" in url.lower() for url in unrelated_chunk["cross_references"])
+    assert all(
+        "workloads/pods" not in url for url in unrelated_chunk["cross_references"]
+    )
+
+
+def test_breadcrumb_prepended_to_content():
+    """Every chunk's content must start with a heading breadcrumb line."""
+    content = "## Section A\n\n### Subsection\n\nLeaf content."
+    structure = analyze_structure(content)
+    chunks = chunk_document(content, structure, _make_metadata())
+    for c in chunks:
+        expected = "[" + " > ".join(c["heading_hierarchy"]) + "]"
+        assert c["content"].startswith(expected), (
+            f"Chunk '{c['chunk_id']}' content did not start with {expected!r}"
+        )
+
+
+def test_intro_chunk_breadcrumb_is_doc_title_only():
+    """Intro chunks get a single-item breadcrumb with just the doc title."""
+    content = "Some intro paragraph.\n\n## Section\n\nMore text."
+    structure = analyze_structure(content)
+    chunks = chunk_document(content, structure, _make_metadata())
+    intro = [c for c in chunks if c["heading_hierarchy"] == ["Test Doc"]][0]
+    assert intro["content"].startswith("[Test Doc]\n\n")
+
+
+def test_paragraph_split_overlap_carries_sentences():
+    """Forced paragraph splits prepend the prior chunk's tail sentences."""
+    # Build a section whose own content exceeds TARGET_TOKENS to force
+    # paragraph-level splitting. Each paragraph ends with a unique
+    # sentinel sentence so we can detect carry-over precisely.
+    filler = "Filler content to reach a paragraph worth of tokens here. " * 8
+    paragraphs = [
+        f"Paragraph {i} body. " + filler + f"Sentinel sentence {i}."
+        for i in range(20)
+    ]
+    content = "## Big Section\n\n" + "\n\n".join(paragraphs)
+    structure = analyze_structure(content)
+    chunks = chunk_document(content, structure, _make_metadata())
+
+    section_chunks = [
+        c for c in chunks
+        if c["heading_hierarchy"][-1] == "Big Section"
+    ]
+    assert len(section_chunks) >= 2, "expected the section to be split"
+
+    # Some continuation chunk must contain a Sentinel sentence whose
+    # paragraph number is strictly smaller than its own first paragraph.
+    found_overlap = False
+    for prev, curr in zip(section_chunks, section_chunks[1:]):
+        prev_sentinels = [
+            int(m) for m in re.findall(r"Sentinel sentence (\d+)\.", prev["content"])
+        ]
+        curr_sentinels = [
+            int(m) for m in re.findall(r"Sentinel sentence (\d+)\.", curr["content"])
+        ]
+        if not prev_sentinels or not curr_sentinels:
+            continue
+        # A successful overlap puts at least one sentinel from prev at
+        # the start of curr, before curr's own first paragraph.
+        carryover = set(curr_sentinels) & set(prev_sentinels)
+        if carryover and min(curr_sentinels) in prev_sentinels:
+            found_overlap = True
+            break
+    assert found_overlap, "no sentence overlap detected between split chunks"
+
+
+def test_split_chunk_flags_are_chunk_local():
+    """Split chunks should not inherit has_code from sibling chunk parts."""
+    prose = "\n\n".join(" ".join(["text"] * 250) for _ in range(6))
+    content = (
+        "## Big\n\n"
+        f"{prose}\n\n"
+        "```yaml\n"
+        "apiVersion: v1\n"
+        "kind: Pod\n"
+        "```\n"
+    )
+    structure = analyze_structure(content)
+    chunks = chunk_document(content, structure, _make_metadata())
+
+    code_chunks = [c for c in chunks if "apiVersion: v1" in c["content"]]
+    prose_chunks = [c for c in chunks if "apiVersion: v1" not in c["content"]]
+
+    assert code_chunks, "expected at least one chunk containing code"
+    assert all(c["has_code"] is True for c in code_chunks)
+    assert all(c["has_code"] is False for c in prose_chunks)
+
+
+def test_chunk_document_accepts_legacy_cross_references_arg():
+    """The deprecated cross_references arg is silently ignored."""
+    content = "## Section\n\nContent with [a link](https://example.com/x)."
+    structure = analyze_structure(content)
+    chunks = chunk_document(
+        content, structure, _make_metadata(),
+        cross_references=["https://ignored.example/y"],
+    )
+    for c in chunks:
+        assert "https://ignored.example/y" not in c["cross_references"]

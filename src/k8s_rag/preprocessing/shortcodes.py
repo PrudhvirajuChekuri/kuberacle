@@ -95,16 +95,42 @@ def resolve_notes(content):
     return content
 
 
+# Languages whose comments use // rather than the default # prefix.
+# Anything not in this set uses # for the inlined "Source:" annotation.
+SLASH_COMMENT_LANGS = {
+    "go", "javascript", "js", "typescript", "ts",
+    "java", "c", "cpp", "csharp", "rust", "swift", "kotlin",
+}
+
+
+def _source_comment(lang, file_path):
+    """Format a 'Source:' comment line for an inlined code sample.
+
+    Args:
+        lang: Code fence language identifier.
+        file_path: Original file path of the inlined sample.
+
+    Returns:
+        A single-line comment in syntax appropriate for the language.
+    """
+    if lang in SLASH_COMMENT_LANGS:
+        return f"// Source: {file_path}"
+    return f"# Source: {file_path}"
+
+
 def resolve_code_samples(content, examples_dir):
     """Inline code_sample shortcodes with the referenced file content.
 
     Reads the referenced YAML/JSON file from the examples directory
-    and inserts it as a fenced code block.
+    and inserts it as a fenced code block. Prepends a "Source:" comment
+    inside the block so the inlined sample's provenance is preserved
+    when the chunk is retrieved.
 
     Example:
         {{% code_sample file="pods/simple-pod.yaml" %}}
         becomes:
         ```yaml
+        # Source: pods/simple-pod.yaml
         apiVersion: v1
         kind: Pod
         ...
@@ -133,7 +159,8 @@ def resolve_code_samples(content, examples_dir):
         lang = {"yaml": "yaml", "yml": "yaml", "json": "json", "go": "go",
                 "sh": "shell", "bash": "shell"}.get(suffix, suffix)
 
-        return f"```{lang}\n{code}\n```"
+        source_line = _source_comment(lang, file_path)
+        return f"```{lang}\n{source_line}\n{code}\n```"
 
     return re.sub(pattern, replace_code_sample, content)
 
@@ -307,39 +334,89 @@ def resolve_figures(content):
 
         if parts:
             return " ".join(parts)
+
+        # Fall back to alt text so the figure is not silently lost
+        alt_match = re.search(r'alt="([^"]*)"', attrs)
+        if alt_match and alt_match.group(1).strip():
+            return f"**[Figure: {alt_match.group(1)}]**"
         return ""
 
     return re.sub(pattern, replace_figure, content)
 
 
-def strip_skew(content):
-    """Remove skew shortcodes entirely.
+def resolve_skew(content, k8s_version):
+    """Resolve skew shortcodes to the current Kubernetes version.
 
-    These reference version skew policies and are not useful
-    for RAG retrieval.
+    The K8s docs use {{< skew currentVersion >}} as a placeholder for
+    the version number (without a leading "v"). The surrounding source
+    already prefixes "v" where appropriate (e.g., "v{{< skew … >}}").
 
     Args:
         content: Markdown string containing skew shortcodes.
+        k8s_version: Kubernetes docs version string (e.g., "v1.36").
 
     Returns:
-        Markdown string with skew shortcodes removed.
+        Markdown string with skew shortcodes replaced by the version
+        number with any leading "v" stripped.
     """
-    return re.sub(r'{{<\s*skew\s+[^>]*>}}', '', content)
+    version_number = k8s_version.lstrip("v")
+    return re.sub(r'{{<\s*skew\s+[^>]*>}}', version_number, content)
 
 
-def strip_api_reference(content):
-    """Remove api-reference shortcodes.
+# Maps API reference page paths to their kubernetes.io URLs.
+API_REFERENCE_BASE = "https://kubernetes.io/docs/reference/kubernetes-api"
 
-    These render as links to the API reference docs. The page
-    attribute is not useful for RAG content.
+
+def _api_reference_link_text(page):
+    """Build a human-readable link label from an api-reference page path.
+
+    Strips a trailing version segment ("-v1", "-v2beta1", ...) and
+    title-cases the remaining resource name. For example:
+        "workload-resources/pod-v1" -> "Pod API reference"
+        "workload-resources/deployment-v1" -> "Deployment API reference"
+        "workload-resources/replica-set-v1" -> "Replica Set API reference"
+
+    Args:
+        page: The page attribute from an api-reference shortcode.
+
+    Returns:
+        Display text for the resulting markdown link.
+    """
+    last_segment = page.rsplit("/", 1)[-1]
+    resource_slug = re.sub(r'-v\d+\w*$', '', last_segment)
+    words = [w for w in resource_slug.split("-") if w]
+    resource_label = " ".join(w.capitalize() for w in words) if words else "API"
+    return f"{resource_label} API reference"
+
+
+def resolve_api_reference(content):
+    """Resolve api-reference shortcodes to markdown links.
+
+    Example:
+        {{< api-reference page="workload-resources/pod-v1" >}}
+        becomes:
+        [Pod API reference](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/)
 
     Args:
         content: Markdown string containing api-reference shortcodes.
 
     Returns:
-        Markdown string with api-reference shortcodes removed.
+        Markdown string with api-reference shortcodes replaced by
+        labeled links to the API reference docs.
     """
-    return re.sub(r'{{<\s*api-reference\s+[^>]*>}}', '', content)
+    pattern = r'{{<\s*api-reference\s+([^>]*?)>}}'
+
+    def replace_api_reference(match):
+        attrs = match.group(1)
+        page_match = re.search(r'page="([^"]*)"', attrs)
+        if not page_match:
+            return ""
+        page = page_match.group(1)
+        label = _api_reference_link_text(page)
+        url = f"{API_REFERENCE_BASE}/{page}/"
+        return f"[{label}]({url})"
+
+    return re.sub(pattern, replace_api_reference, content)
 
 
 def strip_html_comments(content):
@@ -368,20 +445,23 @@ def clean_extra_whitespace(content):
     return re.sub(r'\n{3,}', '\n\n', content).strip()
 
 
-def resolve_shortcodes(content, examples_dir, includes_dir):
+def resolve_shortcodes(content, examples_dir, includes_dir, k8s_version="v1.36"):
     """Resolve all Hugo shortcodes in a markdown document.
 
     Runs each resolver in the correct order:
     1. Structural (tabs) — unwrap before processing inner content
     2. File inlining (code_sample, include) — bring in external content
-    3. Inline replacements (glossary, heading, feature-state, param, figure)
+    3. Inline replacements (glossary, heading, feature-state, param,
+       figure, skew, api-reference)
     4. Block replacements (note, caution, warning)
-    5. Cleanup (skew, HTML comments, whitespace)
+    5. Cleanup (HTML comments, whitespace)
 
     Args:
         content: Raw markdown body (after frontmatter extraction).
         examples_dir: Path to data/examples/ for code_sample resolution.
         includes_dir: Path to data/includes/ for include resolution.
+        k8s_version: Kubernetes docs version (e.g., "v1.36"), used to
+            resolve {{< skew currentVersion >}} shortcodes.
 
     Returns:
         Clean markdown string with all shortcodes resolved.
@@ -399,13 +479,13 @@ def resolve_shortcodes(content, examples_dir, includes_dir):
     content = resolve_feature_states(content)
     content = resolve_params(content)
     content = resolve_figures(content)
+    content = resolve_skew(content, k8s_version)
+    content = resolve_api_reference(content)
 
     # 4. Block replacements
     content = resolve_notes(content)
 
     # 5. Cleanup
-    content = strip_skew(content)
-    content = strip_api_reference(content)
     content = strip_html_comments(content)
     content = clean_extra_whitespace(content)
 

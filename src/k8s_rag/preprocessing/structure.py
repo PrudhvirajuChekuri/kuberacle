@@ -8,6 +8,28 @@ this map to determine safe split points and atomic regions.
 import re
 
 
+# A GFM table separator row: optional leading/trailing pipes, two or
+# more cells of three-plus dashes (with optional alignment colons),
+# pipe-separated. Used to distinguish real tables from prose that
+# happens to contain pipe characters.
+_TABLE_SEPARATOR = re.compile(
+    r'^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$'
+)
+
+
+def _is_table_separator(line):
+    """Return True if a line is a GFM table separator row.
+
+    Args:
+        line: A single line of markdown.
+
+    Returns:
+        True if the line matches the separator pattern (e.g.,
+        "|---|---|" or "| :--- | ---: |").
+    """
+    return bool(_TABLE_SEPARATOR.match(line))
+
+
 def estimate_tokens(text):
     """Estimate token count for a text string.
 
@@ -137,19 +159,26 @@ def analyze_structure(content):
                 in_table = False
             continue
 
-        # Detect tables (pipe-delimited rows)
-        is_table_line = "|" in stripped and not stripped.startswith(">")
-        if is_table_line:
-            if not in_table:
-                in_table = True
-                table_start = i
-        else:
-            if in_table:
+        # Detect tables (pipe-delimited rows). A region only counts as
+        # a table when a header row is followed by a GFM separator row,
+        # so that prose lines containing "|" (inline code, shell pipes,
+        # cross-references) don't get flagged.
+        is_pipe_line = "|" in stripped and not stripped.startswith(">")
+        if in_table:
+            if not is_pipe_line:
                 tables.append({
                     "start_line": table_start,
                     "end_line": i - 1,
                 })
                 in_table = False
+        else:
+            if (
+                is_pipe_line
+                and i + 1 < len(lines)
+                and _is_table_separator(lines[i + 1])
+            ):
+                in_table = True
+                table_start = i
 
     # Close any open table at end of document
     if in_table:

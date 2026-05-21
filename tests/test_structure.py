@@ -92,6 +92,40 @@ def test_table_not_detected_inside_code_block():
     assert len(result["tables"]) == 0
 
 
+def test_pipe_in_prose_not_detected_as_table():
+    """A sentence with stray pipes must not be treated as a table."""
+    content = (
+        "## Section\n\n"
+        "Run `kubectl get pods | grep web` to filter the output.\n\n"
+        "More prose follows."
+    )
+    result = analyze_structure(content)
+    assert len(result["tables"]) == 0
+
+
+def test_pipe_in_inline_code_not_detected():
+    """Backticked pipe characters in markdown must not start a table."""
+    content = (
+        "## Section\n\n"
+        "Use the `|` operator to combine filters.\n\n"
+        "Another prose line."
+    )
+    result = analyze_structure(content)
+    assert len(result["tables"]) == 0
+
+
+def test_table_with_alignment_separator_detected():
+    """Separator rows with alignment colons still register as tables."""
+    content = (
+        "## Section\n\n"
+        "| Left | Right |\n"
+        "| :--- | ---: |\n"
+        "| a    | b     |\n"
+    )
+    result = analyze_structure(content)
+    assert len(result["tables"]) == 1
+
+
 def test_sections_have_token_counts():
     content = "## Section A\n\nSome content here.\n\n## Section B\n\nMore content."
     result = analyze_structure(content)

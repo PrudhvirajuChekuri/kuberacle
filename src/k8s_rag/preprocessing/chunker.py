@@ -6,14 +6,95 @@ atomic, and attaches rich metadata to each chunk.
 """
 
 import re
-from k8s_rag.preprocessing.structure import estimate_tokens
+from k8s_rag.preprocessing.structure import analyze_structure, estimate_tokens
+from k8s_rag.preprocessing.links import extract_cross_references
 
 
 TARGET_TOKENS = 800
 HARD_CAP_TOKENS = 1600
 
+# Fields from the raw frontmatter that shouldn't propagate to chunks.
+_METADATA_DROP = ("reviewers", "weight", "no_list")
 
-def make_chunk_id(file_path, heading_text, index=None):
+# Sentence boundary: end-of-sentence punctuation followed by whitespace.
+_SENTENCE_BOUNDARY = re.compile(r'(?<=[.!?])\s+')
+
+# Trailing {#anchor-id} marker on a markdown heading line.
+_HEADING_ANCHOR = re.compile(r'\s*\{#[^}]+\}\s*$')
+
+# Sentence-overlap tuning for forced paragraph splits.
+_OVERLAP_SENTENCES = 2
+_OVERLAP_MAX_TOKENS = 150
+
+
+def _strip_anchor_ids(text):
+    """Remove trailing {#anchor-id} markers from markdown heading lines.
+
+    The anchors are already captured into the structural map; keeping
+    them in the chunk content adds noise to the embedded text.
+
+    Args:
+        text: Markdown content possibly containing heading anchor ids.
+
+    Returns:
+        The same text with anchor ids stripped from heading lines.
+    """
+    def clean(line):
+        if line.lstrip().startswith("#"):
+            return _HEADING_ANCHOR.sub("", line)
+        return line
+
+    return "\n".join(clean(line) for line in text.split("\n"))
+
+
+def _format_breadcrumb(heading_hierarchy):
+    """Render the heading hierarchy as a bracketed breadcrumb line.
+
+    Args:
+        heading_hierarchy: List of strings from document title down to
+            the chunk's leaf heading.
+
+    Returns:
+        A string like "[Pods > Working with Pods > Pod OS]".
+    """
+    return "[" + " > ".join(heading_hierarchy) + "]"
+
+
+def _carry_over_sentences(prev_chunk_text):
+    """Return the trailing sentences of prev_chunk_text for overlap.
+
+    Used to prepend a short bridge to the start of a continuation
+    chunk after a forced paragraph split. Returns an empty string when
+    no clean sentence boundary is available or when the carry-over
+    would be too large.
+
+    Args:
+        prev_chunk_text: The chunk text that immediately preceded the
+            continuation chunk.
+
+    Returns:
+        A short string (1-2 sentences) or "" if no useful overlap can
+        be produced.
+    """
+    text = prev_chunk_text.rstrip()
+    if not text or text[-1] not in ".!?":
+        return ""
+    sentences = [s for s in _SENTENCE_BOUNDARY.split(text) if s.strip()]
+    if not sentences:
+        return ""
+    candidate = " ".join(sentences[-_OVERLAP_SENTENCES:])
+    if estimate_tokens(candidate) > _OVERLAP_MAX_TOKENS:
+        return ""
+    return candidate
+
+
+def make_chunk_id(
+    file_path,
+    heading_text,
+    index=None,
+    heading_hierarchy=None,
+    line_number=None,
+):
     """Generate a unique chunk ID from file path and heading.
 
     Args:
@@ -22,14 +103,23 @@ def make_chunk_id(file_path, heading_text, index=None):
         heading_text: Text of the section heading.
         index: Optional numeric suffix for collision avoidance
             when a section is split into multiple chunks.
+        heading_hierarchy: Optional full heading hierarchy path.
+            When provided, it is used to disambiguate repeated leaf
+            headings under different parent sections.
+        line_number: Optional source line number for additional
+            disambiguation when the same heading path appears multiple
+            times in one document.
 
     Returns:
         A string ID like "concepts/workloads/pods/_index::pod-lifetime"
         or "concepts/workloads/pods/_index::pod-lifetime--1" if split.
     """
     base = file_path.replace(".md", "")
-    slug = re.sub(r'[^a-z0-9]+', '-', heading_text.lower()).strip('-')
+    slug_source = " > ".join(heading_hierarchy) if heading_hierarchy else heading_text
+    slug = re.sub(r'[^a-z0-9]+', '-', slug_source.lower()).strip('-')
     chunk_id = f"{base}::{slug}" if slug else base
+    if line_number is not None:
+        chunk_id += f"--l{line_number}"
     if index is not None:
         chunk_id += f"--{index}"
     return chunk_id
@@ -204,7 +294,19 @@ def _split_at_paragraphs(text, start_line, code_blocks, tables):
     if last_chunk.strip():
         chunks.append(last_chunk)
 
-    return chunks if chunks else [text]
+    if not chunks:
+        return [text]
+
+    # Sentence-level overlap: prepend the tail of each chunk to its
+    # successor so continuation chunks don't start mid-thought.
+    with_overlap = [chunks[0]]
+    for i in range(1, len(chunks)):
+        carry = _carry_over_sentences(chunks[i - 1])
+        if carry:
+            with_overlap.append(f"{carry}\n\n{chunks[i]}")
+        else:
+            with_overlap.append(chunks[i])
+    return with_overlap
 
 
 def _force_split(text):
@@ -256,32 +358,58 @@ def _get_heading_hierarchy(node, doc_title):
     return [doc_title, node["heading"]["text"]]
 
 
-def _collect_content_flags(start_line, end_line, code_blocks, tables):
-    """Collect has_code, code_types, has_table for a line range.
+def _collect_content_flags(raw_content):
+    """Collect has_code, code_types, has_table for a chunk's own text.
 
     Args:
-        start_line: First line of the range.
-        end_line: Last line of the range.
-        code_blocks: All code blocks in the document.
-        tables: All tables in the document.
+        raw_content: Raw chunk content before breadcrumb prefixing.
 
     Returns:
         Tuple of (has_code, code_types, has_table).
     """
-    section_code = [
-        cb for cb in code_blocks
-        if cb["start_line"] >= start_line and cb["end_line"] <= end_line
-    ]
+    chunk_structure = analyze_structure(raw_content)
+    section_code = chunk_structure["code_blocks"]
     code_types = sorted(set(cb["code_type"] for cb in section_code))
-    section_tables = [
-        t for t in tables
-        if t["start_line"] >= start_line and t["end_line"] <= end_line
-    ]
+    section_tables = chunk_structure["tables"]
     return bool(section_code), code_types, bool(section_tables)
 
 
-def _chunk_node(node, lines, doc_metadata, cross_references,
-                structure, parent_hierarchy):
+def _make_chunk(chunk_id, heading_hierarchy, raw_content, doc_metadata):
+    """Build a chunk dict with all post-processing applied.
+
+    Strips heading anchor markers, prepends the breadcrumb context
+    line, derives chunk-local cross-references from the cleaned text,
+    and computes content flags from the source line range.
+
+    Args:
+        chunk_id: Unique chunk id.
+        heading_hierarchy: Breadcrumb list from doc title to leaf
+            heading.
+        raw_content: Untrimmed chunk text taken from the resolved
+            document.
+        doc_metadata: Document-level metadata dict.
+    Returns:
+        A chunk dict ready for serialization.
+    """
+    cleaned = _strip_anchor_ids(raw_content).strip()
+    cross_refs = extract_cross_references(cleaned)
+    breadcrumb = _format_breadcrumb(heading_hierarchy)
+    final_content = f"{breadcrumb}\n\n{cleaned}" if cleaned else breadcrumb
+    has_code, code_types, has_table = _collect_content_flags(cleaned)
+    return {
+        "chunk_id": chunk_id,
+        "heading_hierarchy": heading_hierarchy,
+        "content": final_content,
+        "token_count": estimate_tokens(final_content),
+        "has_code": has_code,
+        "code_types": code_types,
+        "has_table": has_table,
+        **{k: v for k, v in doc_metadata.items() if k not in _METADATA_DROP},
+        "cross_references": cross_refs,
+    }
+
+
+def _chunk_node(node, lines, doc_metadata, structure, parent_hierarchy):
     """Recursively chunk a heading tree node.
 
     If the node's full content fits in TARGET_TOKENS, it becomes one
@@ -293,7 +421,6 @@ def _chunk_node(node, lines, doc_metadata, cross_references,
         node: A heading tree node.
         lines: All document lines.
         doc_metadata: Document-level metadata dict.
-        cross_references: List of cross-reference URLs.
         structure: Full structural map from analyze_structure.
         parent_hierarchy: Heading hierarchy from parent nodes.
 
@@ -304,85 +431,73 @@ def _chunk_node(node, lines, doc_metadata, cross_references,
     full_tokens = estimate_tokens(full_text)
     hierarchy = parent_hierarchy + [node["heading"]["text"]]
     file_path = doc_metadata.get("file_path", "")
-
     # If the whole section fits, make one chunk
     if full_tokens <= TARGET_TOKENS:
-        has_code, code_types, has_table = _collect_content_flags(
-            node["start_line"], node["end_line"],
-            structure["code_blocks"], structure["tables"],
-        )
-        return [{
-            "chunk_id": make_chunk_id(file_path, node["heading"]["text"]),
-            "heading_hierarchy": hierarchy,
-            "content": full_text.strip(),
-            "token_count": full_tokens,
-            "has_code": has_code,
-            "code_types": code_types,
-            "has_table": has_table,
-            **{k: v for k, v in doc_metadata.items()
-               if k not in ("reviewers", "weight", "no_list")},
-            "cross_references": cross_references,
-        }]
+        return [_make_chunk(
+            chunk_id=make_chunk_id(
+                file_path,
+                node["heading"]["text"],
+                heading_hierarchy=hierarchy,
+                line_number=node["start_line"],
+            ),
+            heading_hierarchy=hierarchy,
+            raw_content=full_text,
+            doc_metadata=doc_metadata,
+        )]
 
     chunks = []
 
-    # Node's own content (between heading and first child)
     if node["children"]:
+        # Node's own content (between heading and first child)
         own_text = _get_own_content(lines, node)
         if own_text.strip():
-            own_end = node["children"][0]["start_line"] - 1
-            has_code, code_types, has_table = _collect_content_flags(
-                node["start_line"], own_end,
-                structure["code_blocks"], structure["tables"],
-            )
-
             if estimate_tokens(own_text) <= TARGET_TOKENS:
-                chunks.append({
-                    "chunk_id": make_chunk_id(file_path, node["heading"]["text"]),
-                    "heading_hierarchy": hierarchy,
-                    "content": own_text.strip(),
-                    "token_count": estimate_tokens(own_text),
-                    "has_code": has_code,
-                    "code_types": code_types,
-                    "has_table": has_table,
-                    **{k: v for k, v in doc_metadata.items()
-                       if k not in ("reviewers", "weight", "no_list")},
-                    "cross_references": cross_references,
-                })
+                chunks.append(_make_chunk(
+                    chunk_id=make_chunk_id(
+                        file_path,
+                        node["heading"]["text"],
+                        heading_hierarchy=hierarchy,
+                        line_number=node["start_line"],
+                    ),
+                    heading_hierarchy=hierarchy,
+                    raw_content=own_text,
+                    doc_metadata=doc_metadata,
+                ))
             else:
                 # Own content is too large — split at paragraphs
                 parts = _split_at_paragraphs(
-                    own_text, node["start_line"],
-                    structure["code_blocks"], structure["tables"],
+                    own_text,
+                    node["start_line"],
+                    structure["code_blocks"],
+                    structure["tables"],
                 )
                 for i, part in enumerate(parts):
                     idx = i if len(parts) > 1 else None
-                    chunks.append({
-                        "chunk_id": make_chunk_id(
-                            file_path, node["heading"]["text"], idx,
+                    chunks.append(_make_chunk(
+                        chunk_id=make_chunk_id(
+                            file_path,
+                            node["heading"]["text"],
+                            idx,
+                            heading_hierarchy=hierarchy,
+                            line_number=node["start_line"],
                         ),
-                        "heading_hierarchy": hierarchy,
-                        "content": part.strip(),
-                        "token_count": estimate_tokens(part),
-                        "has_code": has_code,
-                        "code_types": code_types,
-                        "has_table": has_table,
-                        **{k: v for k, v in doc_metadata.items()
-                           if k not in ("reviewers", "weight", "no_list")},
-                        "cross_references": cross_references,
-                    })
+                        heading_hierarchy=hierarchy,
+                        raw_content=part,
+                        doc_metadata=doc_metadata,
+                    ))
 
         # Recurse into children
         for child in node["children"]:
             chunks.extend(_chunk_node(
-                child, lines, doc_metadata, cross_references,
-                structure, hierarchy,
+                child, lines, doc_metadata, structure, hierarchy,
             ))
     else:
         # Leaf node that's too big — split at paragraphs
         parts = _split_at_paragraphs(
-            full_text, node["start_line"],
-            structure["code_blocks"], structure["tables"],
+            full_text,
+            node["start_line"],
+            structure["code_blocks"],
+            structure["tables"],
         )
 
         for i, part in enumerate(parts):
@@ -396,45 +511,42 @@ def _chunk_node(node, lines, doc_metadata, cross_references,
                 idx = i if len(parts) > 1 else None
                 if j > 0:
                     idx = (i * 10) + j
-                has_code, code_types, has_table = _collect_content_flags(
-                    node["start_line"], node["end_line"],
-                    structure["code_blocks"], structure["tables"],
-                )
-                chunks.append({
-                    "chunk_id": make_chunk_id(
-                        file_path, node["heading"]["text"], idx,
+                chunks.append(_make_chunk(
+                    chunk_id=make_chunk_id(
+                        file_path,
+                        node["heading"]["text"],
+                        idx,
+                        heading_hierarchy=hierarchy,
+                        line_number=node["start_line"],
                     ),
-                    "heading_hierarchy": hierarchy,
-                    "content": sub.strip(),
-                    "token_count": estimate_tokens(sub),
-                    "has_code": has_code,
-                    "code_types": code_types,
-                    "has_table": has_table,
-                    **{k: v for k, v in doc_metadata.items()
-                       if k not in ("reviewers", "weight", "no_list")},
-                    "cross_references": cross_references,
-                })
+                    heading_hierarchy=hierarchy,
+                    raw_content=sub,
+                    doc_metadata=doc_metadata,
+                ))
 
     return chunks
 
 
-def chunk_document(content, structure, metadata, cross_references):
+def chunk_document(content, structure, metadata, cross_references=None):
     """Split a resolved document into retrieval-ready chunks.
 
     This is the main entry point for the chunker. It builds a heading
     tree, recursively chunks each section, and handles intro content
-    before the first heading.
+    before the first heading. Cross-references are derived from each
+    chunk's own content; the optional cross_references argument is
+    retained for backward compatibility but ignored.
 
     Args:
         content: Resolved markdown string.
         structure: Structural map from analyze_structure().
         metadata: Document metadata from extract_metadata().
-        cross_references: List of cross-reference URLs.
+        cross_references: Deprecated. Kept for backward compatibility.
 
     Returns:
         List of chunk dicts, each containing content, metadata,
         and retrieval flags.
     """
+    del cross_references  # superseded by chunk-local extraction
     lines = content.split("\n")
     total_lines = len(lines)
     headings = structure["headings"]
@@ -449,28 +561,22 @@ def chunk_document(content, structure, metadata, cross_references):
     if first_heading_line > 0:
         intro_text = "\n".join(lines[:first_heading_line]).strip()
         if intro_text:
-            has_code, code_types, has_table = _collect_content_flags(
-                0, first_heading_line - 1,
-                structure["code_blocks"], structure["tables"],
-            )
-            chunks.append({
-                "chunk_id": make_chunk_id(file_path, "intro"),
-                "heading_hierarchy": [doc_title],
-                "content": intro_text,
-                "token_count": estimate_tokens(intro_text),
-                "has_code": has_code,
-                "code_types": code_types,
-                "has_table": has_table,
-                **{k: v for k, v in metadata.items()
-                   if k not in ("reviewers", "weight", "no_list")},
-                "cross_references": cross_references,
-            })
+            chunks.append(_make_chunk(
+                chunk_id=make_chunk_id(
+                    file_path,
+                    "intro",
+                    heading_hierarchy=[doc_title],
+                    line_number=0,
+                ),
+                heading_hierarchy=[doc_title],
+                raw_content=intro_text,
+                doc_metadata=metadata,
+            ))
 
     # Recursively chunk each root-level section
     for node in tree:
         chunks.extend(_chunk_node(
-            node, lines, metadata, cross_references,
-            structure, [doc_title],
+            node, lines, metadata, structure, [doc_title],
         ))
 
     return chunks

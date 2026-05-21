@@ -35,16 +35,16 @@ def process_page(file_path, raw_dir, examples_dir, includes_dir, k8s_version):
     metadata, body = extract_metadata(content, file_path, k8s_version)
 
     # Stage 2: Shortcodes
-    resolved = resolve_shortcodes(body, examples_dir, includes_dir)
+    resolved = resolve_shortcodes(body, examples_dir, includes_dir, k8s_version)
 
     # Stage 3: Links
-    resolved, cross_references = process_links(resolved)
+    resolved, _ = process_links(resolved)
 
     # Stage 4: Structure
     structure = analyze_structure(resolved)
 
-    # Stage 5: Chunking
-    chunks = chunk_document(resolved, structure, metadata, cross_references)
+    # Stage 5: Chunking (cross_references are derived per-chunk inside)
+    chunks = chunk_document(resolved, structure, metadata)
 
     return chunks
 

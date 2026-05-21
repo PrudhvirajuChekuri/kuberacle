@@ -32,14 +32,23 @@ def parse_frontmatter(content):
 
     Raises:
         yaml.YAMLError: If the frontmatter contains invalid YAML.
+        ValueError: If frontmatter starts but has no closing delimiter.
     """
     if not content.startswith("---"):
         return {}, content
 
-    # Find the closing '---' (skip the opening one)
-    closing_index = content.index("---", 3)
-    yaml_block = content[3:closing_index]
-    body = content[closing_index + 3:].lstrip("\n")
+    lines = content.splitlines(keepends=True)
+    closing_line = None
+    for idx, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            closing_line = idx
+            break
+
+    if closing_line is None:
+        raise ValueError("Frontmatter opening delimiter found without closing delimiter")
+
+    yaml_block = "".join(lines[1:closing_line])
+    body = "".join(lines[closing_line + 1:]).lstrip("\n")
 
     frontmatter = yaml.safe_load(yaml_block) or {}
     return frontmatter, body

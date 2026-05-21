@@ -46,6 +46,12 @@ def test_multiple_links_in_one_line():
     assert "https://kubernetes.io/docs/jobs/" in result
 
 
+def test_reference_link_definition_becomes_absolute():
+    content = "See [Pods][pods].\n\n[pods]: /docs/concepts/workloads/pods/"
+    result = resolve_relative_links(content)
+    assert "[pods]: https://kubernetes.io/docs/concepts/workloads/pods/" in result
+
+
 # --- extract_cross_references ---
 
 def test_extracts_absolute_urls():
@@ -74,6 +80,29 @@ def test_returns_sorted_list():
     content = "[B](https://b.com) then [A](https://a.com)"
     refs = extract_cross_references(content)
     assert refs == ["https://a.com", "https://b.com"]
+
+
+def test_extracts_autolinks():
+    content = "See <https://kubernetes.io/docs/concepts/workloads/pods/>."
+    refs = extract_cross_references(content)
+    assert refs == ["https://kubernetes.io/docs/concepts/workloads/pods/"]
+
+
+def test_extracts_reference_style_links():
+    content = (
+        "Read [Pods][pods] and [Jobs][].\n\n"
+        "[pods]: https://kubernetes.io/docs/concepts/workloads/pods/\n"
+        "[jobs]: https://kubernetes.io/docs/concepts/workloads/controllers/job/\n"
+    )
+    refs = extract_cross_references(content)
+    assert "https://kubernetes.io/docs/concepts/workloads/pods/" in refs
+    assert "https://kubernetes.io/docs/concepts/workloads/controllers/job/" in refs
+
+
+def test_ignores_markdown_image_links():
+    content = "Diagram: ![pod](https://example.com/pod.png)"
+    refs = extract_cross_references(content)
+    assert refs == []
 
 
 # --- process_links ---

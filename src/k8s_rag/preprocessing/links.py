@@ -9,6 +9,22 @@ import re
 
 BASE_URL = "https://kubernetes.io"
 
+# Inline markdown links, excluding image links.
+_INLINE_LINK = re.compile(r'(?<!!)\[([^\]]*)\]\(([^)]*)\)')
+# Markdown reference-style definitions: [id]: /docs/...
+_REFERENCE_DEF = re.compile(r'^\s*\[([^\]]+)\]:\s*(\S+)\s*$', flags=re.MULTILINE)
+# Markdown reference-style usage: [text][id]
+_REFERENCE_USE = re.compile(r'(?<!!)\[([^\]]+)\]\[([^\]]*)\]')
+# Autolinks like <https://kubernetes.io/docs/...>
+_AUTOLINK = re.compile(r'<(https?://[^>\s]+)>')
+
+
+def _to_absolute_url(url):
+    """Normalize supported relative URLs to absolute kubernetes.io URLs."""
+    if url.startswith("/"):
+        return f"{BASE_URL}{url}"
+    return url
+
 
 def resolve_relative_links(content):
     """Convert relative links to absolute kubernetes.io URLs.
@@ -25,12 +41,17 @@ def resolve_relative_links(content):
     def replace_link(match):
         text = match.group(1)
         url = match.group(2)
+        return f"[{text}]({_to_absolute_url(url)})"
 
-        if url.startswith("/"):
-            return f"[{text}]({BASE_URL}{url})"
-        return match.group(0)
+    resolved = _INLINE_LINK.sub(replace_link, content)
 
-    return re.sub(r'\[([^\]]*)\]\(([^)]*)\)', replace_link, content)
+    # Also normalize reference-style link definitions.
+    def replace_ref_def(match):
+        label = match.group(1)
+        url = match.group(2)
+        return f"[{label}]: {_to_absolute_url(url)}"
+
+    return _REFERENCE_DEF.sub(replace_ref_def, resolved)
 
 
 def extract_cross_references(content):
@@ -46,14 +67,37 @@ def extract_cross_references(content):
     Returns:
         Sorted list of unique URLs found in the content.
     """
-    links = re.findall(r'\[([^\]]*)\]\(([^)]*)\)', content)
     urls = set()
 
-    for _, url in links:
+    # Inline links
+    for _, url in _INLINE_LINK.findall(content):
         # Skip same-page anchors
         if url.startswith("#"):
             continue
         # Strip any trailing anchor from the URL for deduplication
+        base_url = url.split("#")[0]
+        if base_url:
+            urls.add(base_url)
+
+    # Reference-style links: only include definitions that are actually used.
+    definitions = {
+        label.lower(): url for label, url in _REFERENCE_DEF.findall(content)
+    }
+    for text, label in _REFERENCE_USE.findall(content):
+        key = (label or text).lower()
+        url = definitions.get(key)
+        if not url:
+            continue
+        # Skip same-page anchors
+        if url.startswith("#"):
+            continue
+        # Strip any trailing anchor from the URL for deduplication
+        base_url = url.split("#")[0]
+        if base_url:
+            urls.add(base_url)
+
+    # Autolinks
+    for url in _AUTOLINK.findall(content):
         base_url = url.split("#")[0]
         if base_url:
             urls.add(base_url)

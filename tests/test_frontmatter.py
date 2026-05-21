@@ -52,6 +52,13 @@ def test_parse_frontmatter_invalid_yaml():
         parse_frontmatter(content)
 
 
+def test_parse_frontmatter_missing_closing_delimiter():
+    """Missing closing frontmatter delimiter should raise a clear error."""
+    content = "---\ntitle: Broken\nBody with no close delimiter.\n"
+    with pytest.raises(ValueError, match="closing delimiter"):
+        parse_frontmatter(content)
+
+
 def test_parse_frontmatter_triple_dashes_in_body():
     """Triple dashes in the body should not be confused with frontmatter."""
     content = (
