@@ -4,13 +4,33 @@ aws:
 models:
   embedding: "amazon.titan-embed-text-v2:0"
   generation: "amazon.nova-lite-v1:0"
+  reranker: "cohere.rerank-v3-5:0"
 
 vector_store:
   collection_name: "k8s_docs_chunks"
   persist_directory: "data/vector/chroma"
 
 retrieval:
+  semantic_top_k: 8
+  lexical_top_k: 8
+  merged_top_k: 10
+  final_top_k: 5
+  hybrid_weight_semantic: 0.6
+  hybrid_weight_lexical: 0.4
+  min_evidence_score: 0.2
+  min_supporting_chunks: 1
+
+reranker:
+  enabled: true
   top_k: 5
+
+citation:
+  strict_used_only: true
+  deduplicate: true
+
+prompts:
+  version: "v1"
+  directory: "configs/prompts"
 
 generation:
   temperature: 0.2

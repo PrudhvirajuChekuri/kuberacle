@@ -1,0 +1,4 @@
+rules:
+  - "Every factual claim must map to at least one inline citation [n]."
+  - "If citations are missing or invalid, output INSUFFICIENT_EVIDENCE."
+  - "Only cite context chunks that were provided."
