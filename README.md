@@ -51,8 +51,14 @@ Configuration lives in `configs/rag.yaml`; versioned prompts live under `configs
    - `python scripts/ingest.py`
 4. Ask a question:
    - `python scripts/query.py "What is a Pod?"`
+5. Run offline evaluation:
+   - `python scripts/evaluate.py`
 
 The query script prints:
 - grounded answer text
 - citation list with `source_url` and `chunk_id`
+
+The evaluation script writes JSON and markdown artifacts under
+`artifacts/evals/` and returns a non-zero exit code if deterministic
+quality thresholds fail.
 

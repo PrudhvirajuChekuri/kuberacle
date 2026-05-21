@@ -1,0 +1,68 @@
+name: rag-evaluation
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_DEFAULT_REGION: us-east-1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,eval]"
+
+      - name: Validate AWS credentials are configured
+        run: |
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "AWS credentials are required for ingestion/evaluation."
+            exit 1
+          fi
+
+      - name: Run unit tests
+        run: pytest -q
+
+      - name: Prepare corpus
+        run: |
+          python scripts/download_data.py
+          python scripts/preprocess.py
+
+      - name: Build vector index
+        run: python scripts/ingest.py
+
+      - name: Run deterministic evaluation gate
+        run: |
+          python scripts/evaluate.py \
+            --mode deterministic \
+            --json-out artifacts/evals/ci-eval.json \
+            --md-out artifacts/evals/ci-eval.md
+
+      - name: Run optional full evaluation report
+        continue-on-error: true
+        run: |
+          python scripts/evaluate.py \
+            --mode full \
+            --json-out artifacts/evals/ci-eval-full.json \
+            --md-out artifacts/evals/ci-eval-full.md
+
+      - name: Upload evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-artifacts
+          path: artifacts/evals/
