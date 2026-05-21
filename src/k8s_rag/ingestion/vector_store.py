@@ -135,3 +135,27 @@ class ChromaVectorStore:
                 )
             )
         return rows
+
+    def fetch_all_chunks(self) -> list[RetrievedChunk]:
+        """Fetch all stored chunks from collection.
+
+        Returns:
+            List of chunk records with score set to 0.0.
+        """
+        result = self.collection.get(
+            include=["documents", "metadatas"],
+        )
+        ids = result.get("ids", [])
+        docs = result.get("documents", [])
+        metas = result.get("metadatas", [])
+        rows: list[RetrievedChunk] = []
+        for chunk_id, content, metadata in zip(ids, docs, metas):
+            rows.append(
+                RetrievedChunk(
+                    chunk_id=chunk_id,
+                    content=content,
+                    metadata=metadata or {},
+                    score=0.0,
+                )
+            )
+        return rows

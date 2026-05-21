@@ -1,6 +1,9 @@
-"""Semantic retrieval over embedded chunk collections."""
+"""Semantic + hybrid retrieval orchestration."""
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
+from k8s_rag.retrieval.bm25 import BM25Retriever
+from k8s_rag.retrieval.hybrid import merge_hybrid_candidates
+from k8s_rag.retrieval.reranker import BedrockReranker
 
 
 class SemanticRetriever:
@@ -30,3 +33,43 @@ class SemanticRetriever:
         k = top_k if top_k is not None else self.top_k
         query_embedding = self.embedder.embed_text(query)
         return self.vector_store.query(query_embedding, k)
+
+
+class HybridRetriever:
+    """Hybrid retrieval pipeline (semantic + BM25 + rerank)."""
+
+    def __init__(
+        self,
+        semantic_retriever: SemanticRetriever,
+        bm25_retriever: BM25Retriever,
+        reranker: BedrockReranker,
+        semantic_top_k: int,
+        lexical_top_k: int,
+        merged_top_k: int,
+        final_top_k: int,
+        semantic_weight: float,
+        lexical_weight: float,
+    ) -> None:
+        self.semantic_retriever = semantic_retriever
+        self.bm25_retriever = bm25_retriever
+        self.reranker = reranker
+        self.semantic_top_k = semantic_top_k
+        self.lexical_top_k = lexical_top_k
+        self.merged_top_k = merged_top_k
+        self.final_top_k = final_top_k
+        self.semantic_weight = semantic_weight
+        self.lexical_weight = lexical_weight
+
+    def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievedChunk]:
+        """Retrieve hybrid candidates and rerank final output."""
+        final_k = top_k if top_k is not None else self.final_top_k
+        semantic = self.semantic_retriever.retrieve(query, top_k=self.semantic_top_k)
+        lexical = self.bm25_retriever.retrieve(query, top_k=self.lexical_top_k)
+        merged = merge_hybrid_candidates(
+            semantic_chunks=semantic,
+            lexical_chunks=lexical,
+            semantic_weight=self.semantic_weight,
+            lexical_weight=self.lexical_weight,
+            top_k=self.merged_top_k,
+        )
+        return self.reranker.rerank(query, merged, top_k=final_k)
