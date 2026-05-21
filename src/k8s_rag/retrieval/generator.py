@@ -1,8 +1,12 @@
 """Answer generation on top of retrieved chunks."""
 
+import re
 from typing import Any
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
+
+
+_CITATION_INDEX = re.compile(r"\[(\d+)\]")
 
 
 def _build_context(chunks: list[RetrievedChunk]) -> str:
@@ -35,12 +39,14 @@ class BedrockAnswerGenerator:
         region_name: str,
         temperature: float = 0.2,
         max_tokens: int = 600,
+        prompt_bundle: dict[str, str] | None = None,
         bedrock_client: Any = None,
     ) -> None:
         self.model_id = model_id
         self.region_name = region_name
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.prompt_bundle = prompt_bundle or {}
         self._client = bedrock_client
 
     @property
@@ -66,18 +72,18 @@ class BedrockAnswerGenerator:
             Generated answer text.
         """
         context = _build_context(chunks)
-        system_prompt = (
-            "You are a Kubernetes docs assistant. Answer only using the provided "
-            "context. If context is insufficient, say exactly: INSUFFICIENT_EVIDENCE."
+        citation_rules = self.prompt_bundle.get("citation_rules", "")
+        system_prompt = self.prompt_bundle.get(
+            "system",
+            "You are a Kubernetes docs assistant. Answer only using context.",
         )
-        user_prompt = (
-            "Question:\n"
-            f"{question}\n\n"
-            "Context:\n"
-            f"{context}\n\n"
-            "Answer in concise prose and include inline citations like [1], [2] "
-            "that refer to the numbered context entries."
+        user_template = self.prompt_bundle.get(
+            "user",
+            "Question:\n{question}\n\nContext:\n{context}\n",
         )
+        user_prompt = user_template.format(question=question, context=context)
+        if citation_rules:
+            user_prompt += f"\n\nCitation rules:\n{citation_rules}"
 
         return self._generate_with_converse(system_prompt, user_prompt)
 
@@ -103,3 +109,15 @@ class BedrockAnswerGenerator:
         if not content:
             return "INSUFFICIENT_EVIDENCE."
         return content[0].get("text", "").strip()
+
+
+def extract_citation_indices(answer: str) -> list[int]:
+    """Extract ordered citation indices from answer text."""
+    indices = [int(match) for match in _CITATION_INDEX.findall(answer)]
+    ordered_unique: list[int] = []
+    seen: set[int] = set()
+    for idx in indices:
+        if idx not in seen:
+            seen.add(idx)
+            ordered_unique.append(idx)
+    return ordered_unique
