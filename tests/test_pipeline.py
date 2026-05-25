@@ -275,6 +275,27 @@ def test_run_pipeline_empty_config(tmp_path):
     assert len(chunks) == 0
 
 
+def test_run_pipeline_allows_empty_chunk_page(tmp_path, monkeypatch):
+    """Pages that produce zero chunks should not be marked as failed."""
+    config = _make_config(tmp_path, {"concepts": ["empty.md"]})
+
+    def fake_process_page(*args, **kwargs):
+        del args, kwargs
+        return []
+
+    monkeypatch.setattr(
+        "k8s_rag.preprocessing.pipeline.process_page",
+        fake_process_page,
+    )
+
+    chunks, stats = run_pipeline(config, tmp_path)
+
+    assert len(chunks) == 0
+    assert stats["total_pages"] == 1
+    assert stats["failed_pages"] == 0
+    assert stats["pages"][0]["chunks"] == 0
+
+
 # ---------------------------------------------------------------------------
 # write_jsonl
 # ---------------------------------------------------------------------------
