@@ -157,7 +157,7 @@ def main() -> None:
     qa_system = build_qa_system(config)
     thresholds = EvaluationThresholds(
         retrieval_recall_at_k=config.eval_retrieval_recall_at_k_threshold,
-        citation_precision=config.eval_citation_precision_threshold,
+        precision_at_1=config.eval_precision_at_1_threshold,
         abstention_accuracy=config.eval_abstention_accuracy_threshold,
         non_empty_answer_rate=config.eval_non_empty_answer_rate_threshold,
     )

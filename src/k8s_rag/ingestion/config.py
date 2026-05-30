@@ -35,7 +35,7 @@ class RAGConfig:
         max_tokens: Max generated tokens.
         evaluation_dataset_path: Default golden eval dataset path.
         eval_retrieval_recall_at_k_threshold: Min retrieval recall gate.
-        eval_citation_precision_threshold: Min citation precision gate.
+        eval_precision_at_1_threshold: Min precision@1 post-rerank gate.
         eval_abstention_accuracy_threshold: Min abstention accuracy gate.
         eval_non_empty_answer_rate_threshold: Min non-empty answer gate.
     """
@@ -64,7 +64,7 @@ class RAGConfig:
     max_tokens: int
     evaluation_dataset_path: str
     eval_retrieval_recall_at_k_threshold: float
-    eval_citation_precision_threshold: float
+    eval_precision_at_1_threshold: float
     eval_abstention_accuracy_threshold: float
     eval_non_empty_answer_rate_threshold: float
 
@@ -117,8 +117,8 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
         eval_retrieval_recall_at_k_threshold=float(
             evaluation.get("retrieval_recall_at_k_threshold", 0.70)
         ),
-        eval_citation_precision_threshold=float(
-            evaluation.get("citation_precision_threshold", 0.80)
+        eval_precision_at_1_threshold=float(
+            evaluation.get("precision_at_1_threshold", 0.70)
         ),
         eval_abstention_accuracy_threshold=float(
             evaluation.get("abstention_accuracy_threshold", 0.90)

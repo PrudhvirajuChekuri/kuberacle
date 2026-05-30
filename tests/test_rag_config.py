@@ -40,7 +40,7 @@ def test_load_rag_config_parses_expected_fields(tmp_path):
         "evaluation:\n"
         "  dataset_path: evals/golden/v1.jsonl\n"
         "  retrieval_recall_at_k_threshold: 0.72\n"
-        "  citation_precision_threshold: 0.85\n"
+        "  precision_at_1_threshold: 0.75\n"
         "  abstention_accuracy_threshold: 0.91\n"
         "  non_empty_answer_rate_threshold: 0.95\n"
     )
@@ -56,6 +56,6 @@ def test_load_rag_config_parses_expected_fields(tmp_path):
     assert config.max_tokens == 500
     assert config.evaluation_dataset_path == "evals/golden/v1.jsonl"
     assert config.eval_retrieval_recall_at_k_threshold == 0.72
-    assert config.eval_citation_precision_threshold == 0.85
+    assert config.eval_precision_at_1_threshold == 0.75
     assert config.eval_abstention_accuracy_threshold == 0.91
     assert config.eval_non_empty_answer_rate_threshold == 0.95

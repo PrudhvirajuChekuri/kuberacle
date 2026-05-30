@@ -18,17 +18,14 @@ def retrieval_recall_at_k(
     return len(retrieved.intersection(reference)) / float(len(reference))
 
 
-def citation_precision(
-    cited_chunk_ids: list[str],
+def precision_at_1(
+    retrieved_chunk_ids: list[str],
     reference_chunk_ids: list[str],
 ) -> float:
-    """Compute precision of cited chunks against expected support chunks."""
-    if not cited_chunk_ids:
+    """Return 1.0 if the top-ranked retrieved chunk is a reference chunk."""
+    if not retrieved_chunk_ids or not reference_chunk_ids:
         return 0.0
-    reference = set(reference_chunk_ids)
-    cited = set(cited_chunk_ids)
-    true_positive = len(cited.intersection(reference))
-    return true_positive / float(len(cited))
+    return 1.0 if retrieved_chunk_ids[0] in set(reference_chunk_ids) else 0.0
 
 
 def non_empty_answer(answer: str) -> bool:
