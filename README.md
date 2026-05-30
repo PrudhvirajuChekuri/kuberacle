@@ -9,6 +9,7 @@ Ask questions about Kubernetes and get grounded answers with citations to the of
 🚧 **In Development**
 
 Preprocessing is complete, and the baseline RAG pipeline (ingestion + hybrid retrieval + cited answers) is implemented with AWS Bedrock and ChromaDB.
+Phase 3 deterministic evaluation gates are implemented in CI.
 
 ## Architecture
 
@@ -17,7 +18,7 @@ The system processes the official [Kubernetes documentation](https://kubernetes.
 1. **Preprocessing** — Parse frontmatter, resolve Hugo shortcodes, smart chunking
 2. **Ingestion** — Embed chunks and store in a vector database
 3. **Retrieval** — Hybrid search (BM25 + semantic) with cross-encoder reranking
-4. **Evaluation** — Automated faithfulness and retrieval quality metrics in CI
+4. **Evaluation** — Deterministic retrieval/citation quality gates in CI
 
 ## Data Source
 
@@ -26,6 +27,10 @@ Raw markdown from the `[kubernetes/website](https://github.com/kubernetes/websit
 - **Concepts** — How Kubernetes works (pods, deployments, services, networking, storage)
 - **Tasks** — Step-by-step operational guides (debugging, configuration, networking)
 - **Tutorials** — End-to-end walkthroughs (deploying applications, stateful workloads)
+
+Two dataset modes are supported:
+- **Smoke** (`configs/datasets/smoke.yaml`) for fast PR checks
+- **Full** (`configs/datasets/full.yaml`) for manual/nightly full-corpus runs
 
 ## RAG Baseline (Implemented)
 
@@ -44,8 +49,10 @@ Configuration lives in `configs/rag.yaml`; versioned prompts live under `configs
 ## Run RAG Pipeline
 
 1. Ensure preprocessing output exists:
-   - `python scripts/download_data.py`
-   - `python scripts/preprocess.py`
+   - Smoke corpus: `python scripts/download_data.py --config configs/datasets/smoke.yaml`
+   - Smoke preprocess: `python scripts/preprocess.py --config configs/datasets/smoke.yaml`
+   - Full corpus: `python scripts/download_data.py --config configs/datasets/full.yaml`
+   - Full preprocess: `python scripts/preprocess.py --config configs/datasets/full.yaml`
 2. Configure AWS credentials and Bedrock access (region/model access).
 3. Ingest chunks into Chroma:
    - `python scripts/ingest.py`
@@ -53,6 +60,8 @@ Configuration lives in `configs/rag.yaml`; versioned prompts live under `configs
    - `python scripts/query.py "What is a Pod?"`
 5. Run offline evaluation:
    - `python scripts/evaluate.py`
+   - Smoke eval: `python scripts/evaluate.py --dataset evals/golden/smoke.jsonl`
+   - Full benchmark: `python scripts/evaluate.py --dataset evals/golden/v1.jsonl`
 
 The query script prints:
 - grounded answer text

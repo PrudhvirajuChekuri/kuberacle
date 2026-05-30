@@ -103,6 +103,17 @@ SLASH_COMMENT_LANGS = {
 }
 
 
+def _safe_relative_path(path: str) -> Path | None:
+    """Return a safe relative path or None when path is unsafe."""
+    cleaned = path.strip().lstrip("/")
+    if not cleaned:
+        return None
+    candidate = Path(cleaned)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        return None
+    return candidate
+
+
 def _source_comment(lang, file_path):
     """Format a 'Source:' comment line for an inlined code sample.
 
@@ -148,7 +159,10 @@ def resolve_code_samples(content, examples_dir):
 
     def replace_code_sample(match):
         file_path = match.group(1)
-        full_path = Path(examples_dir) / file_path
+        rel_path = _safe_relative_path(file_path)
+        if rel_path is None:
+            return f"<!-- code_sample not found: {file_path} -->"
+        full_path = Path(examples_dir) / rel_path
 
         if not full_path.exists():
             return f"<!-- code_sample not found: {file_path} -->"
@@ -179,11 +193,14 @@ def resolve_includes(content, includes_dir):
     Returns:
         Markdown string with include shortcodes replaced by file content.
     """
-    pattern = r'{{<\s*include\s+"([^"]*)"\s*>}}'
+    pattern = r'{{[<%]\s*include\s+"([^"]*)"\s*[>%]}}'
 
     def replace_include(match):
         filename = match.group(1)
-        full_path = Path(includes_dir) / filename
+        rel_path = _safe_relative_path(filename)
+        if rel_path is None:
+            return f"<!-- include not found: {filename} -->"
+        full_path = Path(includes_dir) / rel_path
 
         if not full_path.exists():
             return f"<!-- include not found: {filename} -->"

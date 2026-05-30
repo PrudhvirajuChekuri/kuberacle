@@ -3,9 +3,12 @@ name: rag-evaluation
 on:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
 
 jobs:
-  quality-gate:
+  quality-gate-smoke:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -34,32 +37,85 @@ jobs:
       - name: Run unit tests
         run: pytest -q
 
-      - name: Prepare corpus
+      - name: Prepare smoke corpus
         run: |
-          python scripts/download_data.py
-          python scripts/preprocess.py
+          python scripts/download_data.py --config configs/datasets/smoke.yaml
+          python scripts/preprocess.py --config configs/datasets/smoke.yaml
 
       - name: Build vector index
         run: python scripts/ingest.py
 
-      - name: Run deterministic evaluation gate
+      - name: Run deterministic smoke evaluation gate
+        run: |
+          python scripts/evaluate.py \
+            --dataset evals/golden/smoke.jsonl \
+            --mode deterministic \
+            --json-out artifacts/evals/ci-smoke-eval.json \
+            --md-out artifacts/evals/ci-smoke-eval.md
+
+      - name: Upload smoke evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-artifacts-smoke
+          path: artifacts/evals/
+
+  quality-gate-full:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-east-1
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,eval]"
+
+      - name: Run unit tests
+        run: pytest -q
+
+      - name: Prepare full corpus
+        run: |
+          python scripts/download_data.py --config configs/datasets/full.yaml
+          python scripts/preprocess.py --config configs/datasets/full.yaml
+
+      - name: Build vector index
+        run: python scripts/ingest.py
+
+      - name: Run deterministic full evaluation gate
         run: |
           python scripts/evaluate.py \
             --mode deterministic \
-            --json-out artifacts/evals/ci-eval.json \
-            --md-out artifacts/evals/ci-eval.md
+            --json-out artifacts/evals/ci-full-eval.json \
+            --md-out artifacts/evals/ci-full-eval.md
 
-      - name: Run optional full evaluation report
+      - name: Run optional full RAGAS evaluation report
         continue-on-error: true
         run: |
           python scripts/evaluate.py \
             --mode full \
-            --json-out artifacts/evals/ci-eval-full.json \
-            --md-out artifacts/evals/ci-eval-full.md
+            --json-out artifacts/evals/ci-full-eval-ragas.json \
+            --md-out artifacts/evals/ci-full-eval-ragas.md
 
-      - name: Upload evaluation artifacts
+      - name: Upload full evaluation artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rag-eval-artifacts
+          name: rag-eval-artifacts-full
           path: artifacts/evals/

@@ -6,7 +6,6 @@ Usage:
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 from k8s_rag.evaluation.dataset import load_golden_dataset
@@ -41,6 +40,17 @@ def parse_args() -> argparse.Namespace:
         help="Path to golden dataset JSONL (defaults to config value).",
     )
     parser.add_argument("--top-k", type=int, default=None, help="Retrieval depth override.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional cap on number of evaluation cases.",
+    )
+    parser.add_argument(
+        "--tags",
+        default=None,
+        help="Optional comma-separated tag filter (matches if case has any tag).",
+    )
     parser.add_argument(
         "--mode",
         choices=["deterministic", "full"],
@@ -134,10 +144,20 @@ def main() -> None:
 
     dataset_path = resolve_path(args.dataset or config.evaluation_dataset_path)
     dataset = load_golden_dataset(dataset_path)
+    if args.tags:
+        selected_tags = {tag.strip() for tag in args.tags.split(",") if tag.strip()}
+        dataset = [
+            row for row in dataset
+            if any(tag in selected_tags for tag in row.tags)
+        ]
+    if args.limit is not None:
+        dataset = dataset[: args.limit]
+    if not dataset:
+        raise SystemExit("No evaluation cases selected after applying filters.")
     qa_system = build_qa_system(config)
     thresholds = EvaluationThresholds(
         retrieval_recall_at_k=config.eval_retrieval_recall_at_k_threshold,
-        citation_precision=config.eval_citation_precision_threshold,
+        precision_at_1=config.eval_precision_at_1_threshold,
         abstention_accuracy=config.eval_abstention_accuracy_threshold,
         non_empty_answer_rate=config.eval_non_empty_answer_rate_threshold,
     )

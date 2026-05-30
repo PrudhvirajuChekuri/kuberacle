@@ -124,6 +124,18 @@ def test_code_sample_missing_file(tmp_path):
     assert "not found" in result
 
 
+def test_code_sample_leading_slash_is_treated_as_relative(tmp_path):
+    """Leading slash references should resolve within examples_dir."""
+    example_file = tmp_path / "controllers" / "example.yaml"
+    example_file.parent.mkdir(parents=True)
+    example_file.write_text("apiVersion: v1\nkind: ConfigMap\n")
+
+    content = '{{% code_sample file="/controllers/example.yaml" %}}'
+    result = resolve_code_samples(content, tmp_path)
+    assert "```yaml" in result
+    assert "kind: ConfigMap" in result
+
+
 # --- resolve_includes ---
 
 def test_include_inlines_content(tmp_path):
@@ -135,10 +147,31 @@ def test_include_inlines_content(tmp_path):
     assert result == "You need a Kubernetes cluster."
 
 
+def test_include_percent_syntax_inlines_content(tmp_path):
+    """Percent-delimited include shortcode should also resolve."""
+    include_file = tmp_path / "prereqs.md"
+    include_file.write_text("You need a Kubernetes cluster.")
+
+    content = '{{% include "prereqs.md" %}}'
+    result = resolve_includes(content, tmp_path)
+    assert result == "You need a Kubernetes cluster."
+
+
 def test_include_missing_file(tmp_path):
     content = '{{< include "missing.md" >}}'
     result = resolve_includes(content, tmp_path)
     assert "not found" in result
+
+
+def test_include_leading_slash_is_treated_as_relative(tmp_path):
+    """Leading slash include references should resolve under includes_dir."""
+    include_file = tmp_path / "shared" / "snippet.md"
+    include_file.parent.mkdir(parents=True)
+    include_file.write_text("Shared include text.")
+
+    content = '{{< include "/shared/snippet.md" >}}'
+    result = resolve_includes(content, tmp_path)
+    assert result == "Shared include text."
 
 
 # --- resolve_headings ---

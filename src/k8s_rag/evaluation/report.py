@@ -26,7 +26,7 @@ def build_markdown_summary(summary: EvaluationSummary) -> str:
         f"(answerable={summary.answerable_cases}, "
         f"unanswerable={summary.unanswerable_cases})",
         f"- retrieval_recall_at_k: {summary.retrieval_recall_at_k:.3f}",
-        f"- citation_precision: {summary.citation_precision:.3f}",
+        f"- precision_at_1: {summary.precision_at_1:.3f}",
         f"- abstention_accuracy: {summary.abstention_accuracy:.3f}",
         f"- non_empty_answer_rate: {summary.non_empty_answer_rate:.3f}",
     ]

@@ -83,8 +83,8 @@ def run_pipeline(config, data_dir):
                 page_stats.append({
                     "file": file_path,
                     "chunks": len(chunks),
-                    "min_tokens": min(tokens),
-                    "max_tokens": max(tokens),
+                    "min_tokens": min(tokens) if tokens else 0,
+                    "max_tokens": max(tokens) if tokens else 0,
                 })
             except Exception as e:
                 print(f"  ERROR: {e}")
