@@ -49,8 +49,9 @@ class BedrockReranker:
         try:
             body = json.dumps(
                 {
+                    "api_version": 2,
                     "query": query,
-                    "documents": [{"text": chunk.content} for chunk in chunks],
+                    "documents": [chunk.content for chunk in chunks],
                     "top_n": top_k,
                 }
             )
