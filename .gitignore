@@ -1,3 +1,6 @@
+# Environment
+.env
+
 # Generated output
 data/raw/
 data/examples/
