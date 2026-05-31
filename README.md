@@ -8,21 +8,21 @@ Ask questions about Kubernetes and get grounded answers with citations to the of
 
 🚧 **In Development**
 
-Preprocessing is complete, and the baseline RAG pipeline (ingestion + hybrid retrieval + cited answers) is implemented with AWS Bedrock and ChromaDB.
-Phase 3 deterministic evaluation gates are implemented in CI.
+The full RAG pipeline is implemented and running on GCP. Preprocessing, ingestion, hybrid retrieval, reranking, cited answer generation, and deterministic evaluation gates are all in place with CI on pull requests.
 
 ## Architecture
 
 The system processes the official [Kubernetes documentation](https://kubernetes.io/docs/) (v1.36) through a multi-stage pipeline:
 
 1. **Preprocessing** — Parse frontmatter, resolve Hugo shortcodes, smart chunking
-2. **Ingestion** — Embed chunks and store in a vector database
-3. **Retrieval** — Hybrid search (BM25 + semantic) with cross-encoder reranking
-4. **Evaluation** — Deterministic retrieval/citation quality gates in CI
+2. **Ingestion** — Embed chunks with `gemini-embedding-001` and store in ChromaDB
+3. **Retrieval** — Hybrid search (BM25 + semantic) with Discovery Engine reranking
+4. **Generation** — Grounded answers with inline citations using `gemini-2.5-flash-lite`
+5. **Evaluation** — Deterministic retrieval/citation quality gates in CI
 
 ## Data Source
 
-Raw markdown from the `[kubernetes/website](https://github.com/kubernetes/website)` repository (`main` branch, v1.36), covering:
+Raw markdown from the [`kubernetes/website`](https://github.com/kubernetes/website) repository (`main` branch, v1.36), covering:
 
 - **Concepts** — How Kubernetes works (pods, deployments, services, networking, storage)
 - **Tasks** — Step-by-step operational guides (debugging, configuration, networking)
@@ -30,21 +30,47 @@ Raw markdown from the `[kubernetes/website](https://github.com/kubernetes/websit
 
 Two dataset modes are supported:
 - **Smoke** (`configs/datasets/smoke.yaml`) for fast PR checks
-- **Full** (`configs/datasets/full.yaml`) for manual/nightly full-corpus runs
+- **Full** (`configs/datasets/full.yaml`) for manual full-corpus runs
 
-## RAG Baseline (Implemented)
+## Stack
 
-Current baseline includes:
-- embedding chunked docs with Amazon Bedrock (`amazon.titan-embed-text-v2:0`)
-- storing vectors in ChromaDB
-- hybrid retrieval (semantic + BM25) with rerank fallback
-- answer generation with citations using Bedrock generation models
-
-Default generation model in config is `amazon.nova-lite-v1:0`. You can switch
-to Claude models if your account has the required Bedrock throughput mode
-(on-demand or inference profile access, depending on model/version).
+| Component | Technology |
+|---|---|
+| Embeddings | `gemini-embedding-001` via Vertex AI (768-dim) |
+| Generation | `gemini-2.5-flash-lite` via Vertex AI |
+| Reranking | Discovery Engine Ranking API (`semantic-ranker-default@latest`) |
+| Vector store | ChromaDB (local) |
+| Lexical retrieval | BM25 |
+| Auth | Application Default Credentials (ADC) |
 
 Configuration lives in `configs/rag.yaml`; versioned prompts live under `configs/prompts/`.
+
+## Setup
+
+### Prerequisites
+
+- Python 3.10+
+- A GCP project with `aiplatform.googleapis.com` and `discoveryengine.googleapis.com` enabled
+- `gcloud` CLI installed and authenticated
+
+### Install
+
+```bash
+pip install -e ".[dev]"
+```
+
+### Configure credentials
+
+```bash
+gcloud auth application-default login
+```
+
+Create a `.env` file in the project root:
+
+```
+GCP_PROJECT=your-project-id
+GCP_LOCATION=us-central1
+```
 
 ## Run RAG Pipeline
 
@@ -53,21 +79,37 @@ Configuration lives in `configs/rag.yaml`; versioned prompts live under `configs
    - Smoke preprocess: `python scripts/preprocess.py --config configs/datasets/smoke.yaml`
    - Full corpus: `python scripts/download_data.py --config configs/datasets/full.yaml`
    - Full preprocess: `python scripts/preprocess.py --config configs/datasets/full.yaml`
-2. Configure AWS credentials and Bedrock access (region/model access).
-3. Ingest chunks into Chroma:
-   - `python scripts/ingest.py`
-4. Ask a question:
-   - `python scripts/query.py "What is a Pod?"`
-5. Run offline evaluation:
-   - `python scripts/evaluate.py`
-   - Smoke eval: `python scripts/evaluate.py --dataset evals/golden/smoke.jsonl`
-   - Full benchmark: `python scripts/evaluate.py --dataset evals/golden/v1.jsonl`
 
-The query script prints:
-- grounded answer text
-- citation list with `source_url` and `chunk_id`
+2. Ingest chunks into ChromaDB:
+   ```bash
+   python scripts/ingest.py
+   ```
 
-The evaluation script writes JSON and markdown artifacts under
-`artifacts/evals/` and returns a non-zero exit code if deterministic
-quality thresholds fail.
+3. Ask a question:
+   ```bash
+   python scripts/query.py "What is a Pod?"
+   ```
 
+4. Run offline evaluation:
+   ```bash
+   # Smoke eval (12 cases)
+   python scripts/evaluate.py --dataset evals/golden/smoke.jsonl
+
+   # Full benchmark
+   python scripts/evaluate.py --dataset evals/golden/v1.jsonl
+   ```
+
+The query script prints the grounded answer and a citation list with `source_url` and `chunk_id`.
+
+The evaluation script writes JSON and markdown artifacts under `artifacts/evals/` and returns a non-zero exit code if any quality gate fails.
+
+## Evaluation Gates
+
+The smoke eval runs on every pull request. The full benchmark can be triggered manually via `workflow_dispatch` in GitHub Actions.
+
+| Metric | Threshold |
+|---|---|
+| `retrieval_recall_at_k` | 0.75 |
+| `precision_at_1` | 0.65 |
+| `abstention_accuracy` | 0.90 |
+| `non_empty_answer_rate` | 0.90 |
