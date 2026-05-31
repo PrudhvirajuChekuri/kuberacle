@@ -3,8 +3,10 @@ name: rag-evaluation
 on:
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: "0 6 * * *"
+
+env:
+  GCP_PROJECT: project-d8548532-f717-4b4d-a95
+  GCP_LOCATION: us-central1
 
 jobs:
   quality-gate-smoke:
@@ -23,11 +25,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: us-east-1
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Install dependencies
         run: |
@@ -61,7 +63,7 @@ jobs:
           path: artifacts/evals/
 
   quality-gate-full:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -76,11 +78,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: us-east-1
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Install dependencies
         run: |

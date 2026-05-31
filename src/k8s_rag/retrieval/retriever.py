@@ -3,7 +3,7 @@
 from k8s_rag.ingestion.schemas import RetrievedChunk
 from k8s_rag.retrieval.bm25 import BM25Retriever
 from k8s_rag.retrieval.hybrid import merge_hybrid_candidates
-from k8s_rag.retrieval.reranker import BedrockReranker
+from k8s_rag.retrieval.reranker import DiscoveryEngineReranker
 
 
 class SemanticRetriever:
@@ -42,7 +42,7 @@ class HybridRetriever:
         self,
         semantic_retriever: SemanticRetriever,
         bm25_retriever: BM25Retriever,
-        reranker: BedrockReranker,
+        reranker: DiscoveryEngineReranker,
         semantic_top_k: int,
         lexical_top_k: int,
         merged_top_k: int,

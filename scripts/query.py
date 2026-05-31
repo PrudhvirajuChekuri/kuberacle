@@ -7,13 +7,17 @@ Usage:
 import argparse
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 from k8s_rag.ingestion.config import load_rag_config
-from k8s_rag.ingestion.embedder import BedrockEmbedder
+from k8s_rag.ingestion.embedder import VertexAIEmbedder
 from k8s_rag.ingestion.vector_store import ChromaVectorStore
-from k8s_rag.retrieval.generator import BedrockAnswerGenerator
+from k8s_rag.retrieval.generator import VertexAIAnswerGenerator
 from k8s_rag.retrieval.prompts import load_prompt_bundle
 from k8s_rag.retrieval.qa import RAGQASystem
-from k8s_rag.retrieval.reranker import BedrockReranker
+from k8s_rag.retrieval.reranker import DiscoveryEngineReranker
 from k8s_rag.retrieval.retriever import HybridRetriever, SemanticRetriever
 from k8s_rag.retrieval.bm25 import BM25Retriever
 
@@ -40,9 +44,11 @@ def main() -> None:
     args = parse_args()
     config = load_rag_config(CONFIG_PATH)
 
-    embedder = BedrockEmbedder(
+    embedder = VertexAIEmbedder(
         model_id=config.embedding_model_id,
-        region_name=config.aws_region,
+        gcp_project=config.gcp_project,
+        gcp_location=config.gcp_location,
+        output_dimensionality=config.embedding_output_dimensionality,
     )
     vector_store = ChromaVectorStore(
         collection_name=config.collection_name,
@@ -55,9 +61,10 @@ def main() -> None:
     )
     all_chunks = vector_store.fetch_all_chunks()
     lexical = BM25Retriever(chunks=all_chunks, top_k=config.lexical_top_k)
-    reranker = BedrockReranker(
-        model_id=config.reranker_model_id,
-        region_name=config.aws_region,
+    reranker = DiscoveryEngineReranker(
+        gcp_project=config.gcp_project,
+        ranking_config=config.reranker_ranking_config,
+        model=config.reranker_model,
         enabled=config.reranker_enabled,
     )
     retriever = HybridRetriever(
@@ -75,9 +82,10 @@ def main() -> None:
         base_dir=str(PROJECT_ROOT / config.prompt_directory),
         version=config.prompt_version,
     )
-    generator = BedrockAnswerGenerator(
+    generator = VertexAIAnswerGenerator(
         model_id=config.generation_model_id,
-        region_name=config.aws_region,
+        gcp_project=config.gcp_project,
+        gcp_location=config.gcp_location,
         temperature=config.temperature,
         max_tokens=config.max_tokens,
         prompt_bundle=prompt_bundle,

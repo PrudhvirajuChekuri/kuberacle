@@ -1,4 +1,4 @@
-"""Run ingestion into ChromaDB with Bedrock embeddings.
+"""Run ingestion into ChromaDB with Vertex AI embeddings.
 
 Usage:
     python scripts/ingest.py
@@ -6,8 +6,12 @@ Usage:
 
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 from k8s_rag.ingestion.config import load_rag_config
-from k8s_rag.ingestion.embedder import BedrockEmbedder
+from k8s_rag.ingestion.embedder import VertexAIEmbedder
 from k8s_rag.ingestion.pipeline import IngestionPipeline
 from k8s_rag.ingestion.vector_store import ChromaVectorStore
 
@@ -24,9 +28,11 @@ def main() -> None:
     print(f"Embedding model: {config.embedding_model_id}")
     print(f"Collection: {config.collection_name}\n")
 
-    embedder = BedrockEmbedder(
+    embedder = VertexAIEmbedder(
         model_id=config.embedding_model_id,
-        region_name=config.aws_region,
+        gcp_project=config.gcp_project,
+        gcp_location=config.gcp_location,
+        output_dimensionality=config.embedding_output_dimensionality,
     )
     vector_store = ChromaVectorStore(
         collection_name=config.collection_name,

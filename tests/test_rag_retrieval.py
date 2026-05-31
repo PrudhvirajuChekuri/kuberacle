@@ -1,7 +1,7 @@
 """Tests for retrieval and QA orchestration."""
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
-from k8s_rag.retrieval.generator import BedrockAnswerGenerator, extract_citation_indices
+from k8s_rag.retrieval.generator import VertexAIAnswerGenerator, extract_citation_indices
 from k8s_rag.retrieval.hybrid import merge_hybrid_candidates
 from k8s_rag.retrieval.qa import RAGQASystem
 from k8s_rag.retrieval.retriever import SemanticRetriever
@@ -29,18 +29,20 @@ class FakeVectorStore:
         ]
 
 
-class FakeBedrockClient:
-    """Fake Bedrock runtime client for generator tests."""
+class FakeGenAIClient:
+    """Fake Gen AI client for generator tests."""
 
-    def converse(self, **kwargs):
-        del kwargs
-        return {
-            "output": {
-                "message": {
-                    "content": [{"text": "Pods run one or more containers [1]."}]
-                }
-            }
-        }
+    class _Models:
+        def generate_content(self, **kwargs):
+            del kwargs
+
+            class _Response:
+                text = "Pods run one or more containers [1]."
+
+            return _Response()
+
+    def __init__(self):
+        self.models = self._Models()
 
 
 class EmptyVectorStore:
@@ -81,10 +83,11 @@ def test_qa_system_returns_answer_with_citations():
         vector_store=FakeVectorStore(),
         top_k=5,
     )
-    generator = BedrockAnswerGenerator(
-        model_id="anthropic.claude-3-5-haiku-20241022-v1:0",
-        region_name="us-east-1",
-        bedrock_client=FakeBedrockClient(),
+    generator = VertexAIAnswerGenerator(
+        model_id="gemini-2.5-flash-lite",
+        gcp_project="test-project",
+        gcp_location="us-central1",
+        genai_client=FakeGenAIClient(),
     )
     qa = RAGQASystem(retriever=retriever, generator=generator)
     result = qa.ask("What is a Pod?")
@@ -100,10 +103,11 @@ def test_qa_system_handles_insufficient_evidence():
         vector_store=EmptyVectorStore(),
         top_k=5,
     )
-    generator = BedrockAnswerGenerator(
-        model_id="anthropic.claude-3-5-haiku-20241022-v1:0",
-        region_name="us-east-1",
-        bedrock_client=FakeBedrockClient(),
+    generator = VertexAIAnswerGenerator(
+        model_id="gemini-2.5-flash-lite",
+        gcp_project="test-project",
+        gcp_location="us-central1",
+        genai_client=FakeGenAIClient(),
     )
     qa = RAGQASystem(retriever=retriever, generator=generator)
     result = qa.ask("Unknown question?")

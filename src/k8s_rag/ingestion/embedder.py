@@ -1,42 +1,53 @@
-"""Embedding adapters for ingestion and retrieval."""
+"""Embedding adapter for ingestion and retrieval using Vertex AI."""
 
-import json
 from typing import Any
 
 
-class BedrockEmbedder:
-    """Generate text embeddings with Amazon Bedrock models.
+class VertexAIEmbedder:
+    """Generate text embeddings with the Vertex AI Gemini embedding model.
+
+    Uses RETRIEVAL_DOCUMENT task type for batch ingestion and RETRIEVAL_QUERY
+    for single-query retrieval, which improves asymmetric retrieval quality.
 
     Args:
-        model_id: Bedrock embedding model id.
-        region_name: AWS region for runtime client.
-        bedrock_client: Optional injected runtime client for testing.
+        model_id: Embedding model id (e.g. ``gemini-embedding-001``).
+        gcp_project: GCP project ID.
+        gcp_location: GCP region.
+        output_dimensionality: Embedding vector dimension.
+        genai_client: Optional injected client for testing.
     """
 
     def __init__(
         self,
         model_id: str,
-        region_name: str,
-        bedrock_client: Any = None,
+        gcp_project: str,
+        gcp_location: str,
+        output_dimensionality: int = 768,
+        genai_client: Any = None,
     ) -> None:
         self.model_id = model_id
-        self.region_name = region_name
-        self._client = bedrock_client
+        self.gcp_project = gcp_project
+        self.gcp_location = gcp_location
+        self.output_dimensionality = output_dimensionality
+        self._client = genai_client
 
     @property
     def client(self) -> Any:
-        """Lazily initialize and return Bedrock runtime client."""
+        """Lazily initialize and return the Gen AI client."""
         if self._client is None:
-            import boto3
+            from google import genai
 
-            self._client = boto3.client(
-                "bedrock-runtime",
-                region_name=self.region_name,
+            self._client = genai.Client(
+                vertexai=True,
+                project=self.gcp_project,
+                location=self.gcp_location,
             )
         return self._client
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        """Embed a list of texts.
+        """Embed a list of texts for document ingestion.
+
+        Uses RETRIEVAL_DOCUMENT task type.
 
         Args:
             texts: Input text list.
@@ -44,29 +55,37 @@ class BedrockEmbedder:
         Returns:
             List of embedding vectors aligned to input order.
         """
-        return [self.embed_text(text) for text in texts]
+        from google.genai import types
+
+        response = self.client.models.embed_content(
+            model=self.model_id,
+            contents=texts,
+            config=types.EmbedContentConfig(
+                task_type="RETRIEVAL_DOCUMENT",
+                output_dimensionality=self.output_dimensionality,
+            ),
+        )
+        return [embedding.values for embedding in response.embeddings]
 
     def embed_text(self, text: str) -> list[float]:
-        """Embed one text string.
+        """Embed a single query string for retrieval.
+
+        Uses RETRIEVAL_QUERY task type.
 
         Args:
-            text: Input text content.
+            text: Input query text.
 
         Returns:
             Embedding vector.
-
-        Raises:
-            RuntimeError: If response does not include an embedding.
         """
-        body = json.dumps({"inputText": text})
-        response = self.client.invoke_model(
-            modelId=self.model_id,
-            body=body,
-            contentType="application/json",
-            accept="application/json",
+        from google.genai import types
+
+        response = self.client.models.embed_content(
+            model=self.model_id,
+            contents=text,
+            config=types.EmbedContentConfig(
+                task_type="RETRIEVAL_QUERY",
+                output_dimensionality=self.output_dimensionality,
+            ),
         )
-        payload = json.loads(response["body"].read())
-        embedding = payload.get("embedding")
-        if embedding is None:
-            raise RuntimeError("Bedrock embedding response missing 'embedding'")
-        return embedding
+        return response.embeddings[0].values
