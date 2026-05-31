@@ -22,42 +22,47 @@ def _build_context(chunks: list[RetrievedChunk]) -> str:
     return "\n\n".join(parts)
 
 
-class BedrockAnswerGenerator:
-    """Generate grounded answers with Bedrock chat/completion models.
+class VertexAIAnswerGenerator:
+    """Generate grounded answers with a Vertex AI Gemini model.
 
     Args:
-        model_id: Bedrock generation model id.
-        region_name: AWS region for runtime calls.
+        model_id: Gemini generation model id.
+        gcp_project: GCP project ID.
+        gcp_location: GCP region.
         temperature: Generation temperature.
         max_tokens: Maximum generated tokens.
-        bedrock_client: Optional injected Bedrock runtime client.
+        prompt_bundle: Versioned prompt strings keyed by role.
+        genai_client: Optional injected Gen AI client for testing.
     """
 
     def __init__(
         self,
         model_id: str,
-        region_name: str,
+        gcp_project: str,
+        gcp_location: str,
         temperature: float = 0.2,
         max_tokens: int = 600,
         prompt_bundle: dict[str, str] | None = None,
-        bedrock_client: Any = None,
+        genai_client: Any = None,
     ) -> None:
         self.model_id = model_id
-        self.region_name = region_name
+        self.gcp_project = gcp_project
+        self.gcp_location = gcp_location
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.prompt_bundle = prompt_bundle or {}
-        self._client = bedrock_client
+        self._client = genai_client
 
     @property
     def client(self) -> Any:
-        """Lazily initialize and return Bedrock runtime client."""
+        """Lazily initialize and return the Gen AI client."""
         if self._client is None:
-            import boto3
+            from google import genai
 
-            self._client = boto3.client(
-                "bedrock-runtime",
-                region_name=self.region_name,
+            self._client = genai.Client(
+                vertexai=True,
+                project=self.gcp_project,
+                location=self.gcp_location,
             )
         return self._client
 
@@ -85,34 +90,49 @@ class BedrockAnswerGenerator:
         if citation_rules:
             user_prompt += f"\n\nCitation rules:\n{citation_rules}"
 
-        return self._generate_with_converse(system_prompt, user_prompt)
+        return self._generate_with_gemini(system_prompt, user_prompt)
 
-    def _generate_with_converse(self, system_prompt: str, user_prompt: str) -> str:
-        """Invoke Bedrock model via Converse API."""
-        response = self.client.converse(
-            modelId=self.model_id,
-            system=[{"text": system_prompt}],
-            messages=[
-                {
-                    "role": "user",
-                    "content": [{"text": user_prompt}],
-                }
+    def _generate_with_gemini(self, system_prompt: str, user_prompt: str) -> str:
+        """Invoke Gemini model via the Gen AI SDK.
+
+        Args:
+            system_prompt: System instruction text.
+            user_prompt: User turn text.
+
+        Returns:
+            Generated answer string.
+        """
+        from google.genai import types
+
+        response = self.client.models.generate_content(
+            model=self.model_id,
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[types.Part(text=user_prompt)],
+                )
             ],
-            inferenceConfig={
-                "temperature": self.temperature,
-                "maxTokens": self.max_tokens,
-            },
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=self.temperature,
+                max_output_tokens=self.max_tokens,
+            ),
         )
-        output = response.get("output", {})
-        message = output.get("message", {})
-        content = message.get("content", [])
-        if not content:
+        text = response.text
+        if not text:
             return "INSUFFICIENT_EVIDENCE."
-        return content[0].get("text", "").strip()
+        return text.strip()
 
 
 def extract_citation_indices(answer: str) -> list[int]:
-    """Extract ordered citation indices from answer text."""
+    """Extract ordered citation indices from answer text.
+
+    Args:
+        answer: Generated answer containing bracketed citation markers.
+
+    Returns:
+        Ordered list of unique citation indices.
+    """
     indices = [int(match) for match in _CITATION_INDEX.findall(answer)]
     ordered_unique: list[int] = []
     seen: set[int] = set()

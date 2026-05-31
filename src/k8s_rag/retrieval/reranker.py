@@ -1,40 +1,60 @@
-"""Bedrock reranker integration with safe fallback."""
+"""Discovery Engine reranker with ADC bearer token auth."""
 
-import json
 from typing import Any
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
+from k8s_rag.retrieval.constants import DISCOVERY_ENGINE_RANK_URL
 
 
-class BedrockReranker:
-    """Rerank query/chunk candidates using Bedrock model.
+class DiscoveryEngineReranker:
+    """Rerank query/chunk candidates using the Discovery Engine Ranking API.
 
-    Falls back to incoming ranking if rerank invocation is unavailable.
+    Falls back to incoming ranking if the API call fails.
+
+    Args:
+        gcp_project: GCP project ID.
+        ranking_config: Discovery Engine ranking config name.
+        model: Ranker model string sent in the request body.
+        enabled: Whether reranking is active.
+        http_session: Optional injected requests.Session for testing.
     """
 
     def __init__(
         self,
-        model_id: str,
-        region_name: str,
+        gcp_project: str,
+        ranking_config: str,
+        model: str,
         enabled: bool = True,
-        bedrock_client: Any = None,
+        http_session: Any = None,
     ) -> None:
-        self.model_id = model_id
-        self.region_name = region_name
+        self.gcp_project = gcp_project
+        self.ranking_config = ranking_config
+        self.model = model
         self.enabled = enabled
-        self._client = bedrock_client
+        self._session = http_session
 
     @property
-    def client(self) -> Any:
-        """Lazily initialize Bedrock runtime client."""
-        if self._client is None:
-            import boto3
+    def session(self) -> Any:
+        """Lazily initialize and return the requests session."""
+        if self._session is None:
+            import requests
+            self._session = requests.Session()
+        return self._session
 
-            self._client = boto3.client(
-                "bedrock-runtime",
-                region_name=self.region_name,
-            )
-        return self._client
+    def _get_bearer_token(self) -> str:
+        """Obtain an ADC bearer token for the Cloud Platform scope.
+
+        Returns:
+            Bearer token string.
+        """
+        import google.auth
+        import google.auth.transport.requests
+
+        credentials, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        credentials.refresh(google.auth.transport.requests.Request())
+        return credentials.token
 
     def rerank(
         self,
@@ -42,33 +62,48 @@ class BedrockReranker:
         chunks: list[RetrievedChunk],
         top_k: int,
     ) -> list[RetrievedChunk]:
-        """Rerank chunks by query relevance."""
+        """Rerank chunks by query relevance.
+
+        Args:
+            query: User search question.
+            chunks: Candidate chunks to rerank.
+            top_k: Number of top chunks to return.
+
+        Returns:
+            Reranked chunk list, or original order on failure.
+        """
         if not self.enabled or not chunks:
             return chunks[:top_k]
 
         try:
-            body = json.dumps(
-                {
-                    "api_version": 2,
-                    "query": query,
-                    "documents": [chunk.content for chunk in chunks],
-                    "top_n": top_k,
-                }
+            url = DISCOVERY_ENGINE_RANK_URL.format(
+                project=self.gcp_project,
+                ranking_config=self.ranking_config,
             )
-            response = self.client.invoke_model(
-                modelId=self.model_id,
-                body=body,
-                contentType="application/json",
-                accept="application/json",
+            token = self._get_bearer_token()
+            records = [
+                {"id": str(i), "content": chunk.content}
+                for i, chunk in enumerate(chunks)
+            ]
+            payload = {
+                "model": self.model,
+                "query": query,
+                "records": records,
+                "topN": top_k,
+            }
+            response = self.session.post(
+                url,
+                json=payload,
+                headers={"Authorization": f"Bearer {token}"},
             )
-            payload = json.loads(response["body"].read())
-            results = payload.get("results", [])
+            response.raise_for_status()
+            results = response.json().get("records", [])
             if not results:
                 return chunks[:top_k]
 
             reranked: list[RetrievedChunk] = []
             for item in results:
-                idx = int(item.get("index", -1))
+                idx = int(item["id"])
                 if idx < 0 or idx >= len(chunks):
                     continue
                 base = chunks[idx]
@@ -77,7 +112,7 @@ class BedrockReranker:
                         chunk_id=base.chunk_id,
                         content=base.content,
                         metadata=base.metadata,
-                        score=float(item.get("relevance_score", base.score)),
+                        score=float(item.get("score", base.score)),
                     )
                 )
             return reranked[:top_k] if reranked else chunks[:top_k]

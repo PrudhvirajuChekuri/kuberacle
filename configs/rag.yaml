@@ -1,14 +1,13 @@
-aws:
-  region: "us-east-1"
-
 models:
-  embedding: "amazon.titan-embed-text-v2:0"
-  generation: "amazon.nova-lite-v1:0"
-  reranker: "cohere.rerank-v3-5:0"
+  embedding: "gemini-embedding-001"
+  generation: "gemini-2.5-flash-lite"
+
+embedding:
+  output_dimensionality: 768
 
 vector_store:
-  collection_name: "k8s_docs_chunks"
-  persist_directory: "data/vector/chroma"
+  collection_name: "k8s_docs_chunks_gemini"
+  persist_directory: "data/vector/chroma_gemini"
 
 retrieval:
   semantic_top_k: 8
@@ -23,6 +22,8 @@ retrieval:
 reranker:
   enabled: true
   top_k: 5
+  ranking_config: "default_ranking_config"
+  model: "semantic-ranker-default@latest"
 
 citation:
   strict_used_only: true
@@ -38,7 +39,7 @@ generation:
 
 evaluation:
   dataset_path: "evals/golden/v1.jsonl"
-  retrieval_recall_at_k_threshold: 0.70
-  precision_at_1_threshold: 0.50
+  retrieval_recall_at_k_threshold: 0.75
+  precision_at_1_threshold: 0.65
   abstention_accuracy_threshold: 0.90
   non_empty_answer_rate_threshold: 0.90
