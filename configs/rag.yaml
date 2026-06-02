@@ -10,9 +10,9 @@ vector_store:
   persist_directory: "data/vector/chroma_gemini"
 
 retrieval:
-  semantic_top_k: 8
-  lexical_top_k: 8
-  merged_top_k: 10
+  semantic_top_k: 10
+  lexical_top_k: 10
+  merged_top_k: 20
   final_top_k: 5
   hybrid_weight_semantic: 0.6
   hybrid_weight_lexical: 0.4
