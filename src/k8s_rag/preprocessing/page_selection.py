@@ -47,10 +47,6 @@ def _fetch_repo_tree(repo_url: str, branch: str) -> list[dict]:
                 f"retrying in {sleep_seconds}s..."
             )
             time.sleep(sleep_seconds)
-    else:
-        if last_error is not None:
-            raise RuntimeError(f"Failed to fetch repo tree from {url}") from last_error
-        raise RuntimeError(f"Failed to fetch repo tree from {url}")
 
     tree = payload.get("tree")
     if not isinstance(tree, list):

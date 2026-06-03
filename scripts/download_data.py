@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 
 import yaml
 
-from k8s_rag.preprocessing.page_selection import resolve_pages
+from k8s_rag.preprocessing.page_selection import resolve_pages, _owner_repo_from_url
 
 
 # Repository root (assumes script is run from project root)
@@ -41,8 +41,7 @@ def build_raw_url(repo_url, branch, path):
     Returns:
         Raw githubusercontent URL for direct file download.
     """
-    # https://github.com/kubernetes/website -> kubernetes/website
-    owner_repo = repo_url.replace("https://github.com/", "")
+    owner_repo = _owner_repo_from_url(repo_url)
     return f"https://raw.githubusercontent.com/{owner_repo}/{branch}/{path}"
 
 

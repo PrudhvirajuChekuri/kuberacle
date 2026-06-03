@@ -1,9 +1,10 @@
 """Run ingestion into ChromaDB with Vertex AI embeddings.
 
 Usage:
-    python scripts/ingest.py
+    python scripts/ingest.py [--input PATH]
 """
 
+import argparse
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -18,11 +19,22 @@ from k8s_rag.ingestion.vector_store import ChromaVectorStore
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "configs" / "rag.yaml"
-INPUT_JSONL = PROJECT_ROOT / "data" / "processed" / "chunks.jsonl"
+DEFAULT_INPUT_JSONL = PROJECT_ROOT / "data" / "processed" / "chunks.jsonl"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Ingest chunks into ChromaDB")
+    parser.add_argument(
+        "--input",
+        default=str(DEFAULT_INPUT_JSONL),
+        help="Path to preprocessed chunks JSONL.",
+    )
+    return parser.parse_args()
 
 
 def main() -> None:
     """Load config and run ingestion pipeline."""
+    args = parse_args()
     config = load_rag_config(CONFIG_PATH)
     print(f"Loading config from {CONFIG_PATH}")
     print(f"Embedding model: {config.embedding_model_id}")
@@ -39,7 +51,7 @@ def main() -> None:
         persist_directory=str(PROJECT_ROOT / config.persist_directory),
     )
     pipeline = IngestionPipeline(embedder=embedder, vector_store=vector_store)
-    stats = pipeline.run(INPUT_JSONL)
+    stats = pipeline.run(Path(args.input))
     print(f"Ingested chunks: {stats['ingested_chunks']}")
 
 
