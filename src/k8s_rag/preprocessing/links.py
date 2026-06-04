@@ -19,14 +19,14 @@ _REFERENCE_USE = re.compile(r'(?<!!)\[([^\]]+)\]\[([^\]]*)\]')
 _AUTOLINK = re.compile(r'<(https?://[^>\s]+)>')
 
 
-def _to_absolute_url(url):
+def _to_absolute_url(url: str) -> str:
     """Normalize supported relative URLs to absolute kubernetes.io URLs."""
     if url.startswith("/"):
         return f"{BASE_URL}{url}"
     return url
 
 
-def resolve_relative_links(content):
+def resolve_relative_links(content: str) -> str:
     """Convert relative links to absolute kubernetes.io URLs.
 
     Handles markdown links like [text](/docs/...) and [text](/blog/...).
@@ -54,7 +54,7 @@ def resolve_relative_links(content):
     return _REFERENCE_DEF.sub(replace_ref_def, resolved)
 
 
-def extract_cross_references(content):
+def extract_cross_references(content: str) -> list[str]:
     """Extract all outgoing links from markdown content.
 
     Collects unique URLs that point to other pages, which can be used
@@ -105,21 +105,36 @@ def extract_cross_references(content):
     return sorted(urls)
 
 
-def process_links(content):
-    """Resolve links and extract cross-references in one pass.
+def strip_links_to_text(content: str) -> str:
+    """Convert markdown links to plain text.
 
-    This is the main entry point for this module. Resolves relative
-    links to absolute URLs, then extracts the full list of
-    cross-references.
+    Replaces [text](url) with text, removes reference-style definitions,
+    and converts autolinks <url> to just url.
+
+    Args:
+        content: Markdown string with markdown links.
+
+    Returns:
+        Markdown string with links converted to plain text.
+    """
+    content = _INLINE_LINK.sub(r'\1', content)
+    content = _REFERENCE_USE.sub(r'\1', content)
+    content = _REFERENCE_DEF.sub('', content)
+    content = _AUTOLINK.sub(r'\1', content)
+    return content
+
+
+def process_links(content: str) -> str:
+    """Resolve relative links to absolute URLs.
+
+    This is the main entry point for link resolution. Converts relative
+    links to absolute kubernetes.io URLs. Cross-reference extraction and
+    link stripping are handled separately in the pipeline.
 
     Args:
         content: Markdown string with potentially relative links.
 
     Returns:
-        Tuple of (resolved_content, cross_references) where
-        resolved_content has absolute URLs and cross_references
-        is a sorted list of unique outgoing URLs.
+        Markdown string with relative links resolved to absolute URLs.
     """
-    resolved = resolve_relative_links(content)
-    cross_refs = extract_cross_references(resolved)
-    return resolved, cross_refs
+    return resolve_relative_links(content)

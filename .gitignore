@@ -5,8 +5,10 @@
 data/raw/
 data/examples/
 data/includes/
+data/glossary/
 data/processed/
-data/vector
+data/vector/
+data/k8s_version.txt
 
 # Python
 __pycache__/
@@ -15,6 +17,7 @@ __pycache__/
 dist/
 build/
 .eggs/
+.pytest_cache/
 
 # Virtual environment
 .venv/

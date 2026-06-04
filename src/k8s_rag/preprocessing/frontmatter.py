@@ -17,7 +17,7 @@ SECTION_TO_CONTENT_TYPE = {
 }
 
 
-def parse_frontmatter(content):
+def parse_frontmatter(content: str) -> tuple[dict, str]:
     """Split a markdown file into its YAML frontmatter and body.
 
     Expects the file to start with '---', followed by YAML, followed
@@ -50,11 +50,17 @@ def parse_frontmatter(content):
     yaml_block = "".join(lines[1:closing_line])
     body = "".join(lines[closing_line + 1:]).lstrip("\n")
 
-    frontmatter = yaml.safe_load(yaml_block) or {}
+    frontmatter = yaml.safe_load(yaml_block)
+    if frontmatter is None:
+        frontmatter = {}
+    if not isinstance(frontmatter, dict):
+        raise ValueError(
+            f"Frontmatter must be a YAML mapping, got {type(frontmatter).__name__}"
+        )
     return frontmatter, body
 
 
-def derive_metadata(file_path, k8s_version="v1.36"):
+def derive_metadata(file_path: str, k8s_version: str) -> dict:
     """Derive metadata from a doc file's path within the data/raw/ directory.
 
     The path structure (e.g., concepts/workloads/pods/_index.md) encodes
@@ -96,7 +102,7 @@ def derive_metadata(file_path, k8s_version="v1.36"):
     }
 
 
-def extract_metadata(content, file_path, k8s_version="v1.36"):
+def extract_metadata(content: str, file_path: str, k8s_version: str) -> tuple[dict, str]:
     """Parse frontmatter and combine with path-derived metadata.
 
     This is the main entry point for this module. It combines the YAML

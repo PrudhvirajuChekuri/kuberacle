@@ -1,14 +1,17 @@
-# Kubernetes documentation version
-k8s_version: "v1.36"
 source_repo: "https://github.com/kubernetes/website"
 source_branch: "main"
 docs_path: "content/en/docs"
 examples_path: "content/en/examples"
 includes_path: "content/en/includes"
+glossary_path: "content/en/docs/reference/glossary"
 
 # Stable smoke subset for fast PR checks.
 selection:
   mode: list
+
+chunking:
+  target_tokens: 800
+  hard_cap_tokens: 1600
 
 pages:
   concepts:

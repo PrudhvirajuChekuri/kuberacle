@@ -3,6 +3,7 @@
 from k8s_rag.preprocessing.links import (
     resolve_relative_links,
     extract_cross_references,
+    strip_links_to_text,
     process_links,
 )
 
@@ -107,11 +108,38 @@ def test_ignores_markdown_image_links():
 
 # --- process_links ---
 
-def test_process_links_resolves_and_extracts():
+def test_process_links_returns_resolved_string():
     content = "See [Pods](/docs/pods/) and [section](#anchor)."
-    resolved, refs = process_links(content)
+    resolved = process_links(content)
 
     assert "https://kubernetes.io/docs/pods/" in resolved
     assert "(#anchor)" in resolved
-    assert "https://kubernetes.io/docs/pods/" in refs
-    assert len(refs) == 1
+    assert isinstance(resolved, str)
+
+
+# --- strip_links_to_text ---
+
+def test_strip_inline_link_to_text():
+    content = "See [Pods](https://kubernetes.io/docs/pods/) for details."
+    result = strip_links_to_text(content)
+    assert result == "See Pods for details."
+
+
+def test_strip_reference_style_link():
+    content = "Read [Pods][pods] here.\n\n[pods]: https://kubernetes.io/docs/pods/"
+    result = strip_links_to_text(content)
+    assert "Pods" in result
+    assert "[pods]" not in result
+    assert "https://" not in result
+
+
+def test_strip_autolink():
+    content = "Visit <https://kubernetes.io/docs/> for more."
+    result = strip_links_to_text(content)
+    assert result == "Visit https://kubernetes.io/docs/ for more."
+
+
+def test_strip_preserves_image_links():
+    content = "![alt text](https://example.com/img.png)"
+    result = strip_links_to_text(content)
+    assert "![alt text]" in result

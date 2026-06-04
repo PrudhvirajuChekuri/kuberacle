@@ -165,3 +165,15 @@ def test_no_intro_section_when_heading_first():
     content = "## First heading\n\nContent."
     result = analyze_structure(content)
     assert result["sections"][0]["heading_text"] == "First heading"
+
+
+def test_unclosed_code_fence_warning(capsys):
+    """An unclosed code fence should warn and record the block to end of doc."""
+    content = "## Section\n\n```yaml\napiVersion: v1\nkind: Pod"
+    result = analyze_structure(content)
+    assert len(result["code_blocks"]) == 1
+    assert result["code_blocks"][0]["code_type"] == "yaml-manifest"
+    assert result["code_blocks"][0]["end_line"] == len(content.split("\n")) - 1
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.out
+    assert "unclosed" in captured.out.lower()

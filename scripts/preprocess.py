@@ -10,9 +10,10 @@ from k8s_rag.preprocessing.page_selection import resolve_pages
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = PROJECT_ROOT / "configs" / "selected_pages.yaml"
+CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "smoke.yaml"
 DATA_DIR = PROJECT_ROOT / "data"
 OUTPUT_PATH = DATA_DIR / "processed" / "chunks.jsonl"
+K8S_VERSION_FILE = DATA_DIR / "k8s_version.txt"
 
 
 def main():
@@ -57,6 +58,16 @@ def main():
     print(f"Loading config from {config_path}")
     with open(config_path) as f:
         config = yaml.safe_load(f)
+
+    if "k8s_version" not in config:
+        if K8S_VERSION_FILE.exists():
+            config["k8s_version"] = K8S_VERSION_FILE.read_text().strip()
+        else:
+            raise SystemExit(
+                f"k8s_version not in config and {K8S_VERSION_FILE} not found. "
+                "Run download_data.py first."
+            )
+
     sections = args.sections.split(",") if args.sections else None
     page_map = resolve_pages(
         config=config,
@@ -78,12 +89,19 @@ def main():
     output_path = Path(args.output)
     write_jsonl(chunks, output_path)
 
+    unhandled = stats["unhandled_shortcodes"]
+    total_unhandled = sum(unhandled.values())
+
     print(f"\n{'=' * 50}")
     print(f"Pages processed: {stats['total_pages']}")
     print(f"Failed pages:    {stats['failed_pages']}")
     print(f"Total chunks:    {stats['total_chunks']}")
     print(f"Token range:     {stats['min_tokens']} - {stats['max_tokens']}")
     print(f"Avg tokens:      {stats['avg_tokens']}")
+    print(f"Unhandled:       {len(unhandled)} unique shortcodes ({total_unhandled} total appearances)")
+    if unhandled:
+        for name, count in unhandled.items():
+            print(f"                 - {name} ({count})")
     print(f"Output:          {output_path}")
     if stats["failed_pages"] > 0 and not args.allow_partial:
         raise SystemExit(1)

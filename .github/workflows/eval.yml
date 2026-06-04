@@ -5,8 +5,8 @@ on:
   workflow_dispatch:
 
 env:
-  GCP_PROJECT: project-d8548532-f717-4b4d-a95
-  GCP_LOCATION: us-central1
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+  GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
 
 jobs:
   quality-gate-smoke:
@@ -40,6 +40,8 @@ jobs:
         run: pytest -q
 
       - name: Prepare smoke corpus
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python scripts/download_data.py --config configs/datasets/smoke.yaml
           python scripts/preprocess.py --config configs/datasets/smoke.yaml
@@ -93,6 +95,8 @@ jobs:
         run: pytest -q
 
       - name: Prepare full corpus
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python scripts/download_data.py --config configs/datasets/full.yaml
           python scripts/preprocess.py --config configs/datasets/full.yaml
