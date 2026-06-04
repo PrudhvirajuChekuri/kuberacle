@@ -4,7 +4,13 @@ import json
 
 import pytest
 
-from k8s_rag.preprocessing.pipeline import process_page, run_pipeline, write_jsonl
+from k8s_rag.preprocessing.pipeline import (
+    process_page,
+    run_pipeline,
+    write_jsonl,
+    strip_whatsnext,
+    strip_inline_formatting,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +55,7 @@ def test_process_page_returns_chunks(tmp_path):
     file_path = "concepts/overview/test.md"
     _write_page(raw_dir, file_path, _minimal_page())
 
-    chunks = process_page(
+    chunks, _ = process_page(
         file_path, raw_dir, examples_dir, includes_dir, "v1.36",
     )
 
@@ -67,7 +73,7 @@ def test_process_page_chunk_schema(tmp_path):
     file_path = "concepts/overview/test.md"
     _write_page(raw_dir, file_path, _minimal_page("Schema Doc"))
 
-    chunks = process_page(
+    chunks, _ = process_page(
         file_path, raw_dir, examples_dir, includes_dir, "v1.36",
     )
 
@@ -97,7 +103,7 @@ def test_process_page_content_type_derived_from_path(tmp_path):
     ]:
         file_path = f"{section}/example/page.md"
         _write_page(raw_dir, file_path, _minimal_page())
-        chunks = process_page(
+        chunks, _ = process_page(
             file_path, raw_dir, examples_dir, includes_dir, "v1.36",
         )
         for chunk in chunks:
@@ -117,7 +123,7 @@ def test_process_page_k8s_version_threaded(tmp_path):
     file_path = "concepts/overview/test.md"
     _write_page(raw_dir, file_path, _minimal_page())
 
-    chunks = process_page(
+    chunks, _ = process_page(
         file_path, raw_dir, examples_dir, includes_dir, "v1.99",
     )
 
@@ -144,7 +150,7 @@ def test_process_page_resolves_code_sample(tmp_path):
     file_path = "concepts/demo/page.md"
     _write_page(raw_dir, file_path, page)
 
-    chunks = process_page(
+    chunks, _ = process_page(
         file_path, raw_dir, examples_dir, includes_dir, "v1.36",
     )
 
@@ -170,7 +176,7 @@ def test_process_page_resolves_include(tmp_path):
     file_path = "tasks/demo/page.md"
     _write_page(raw_dir, file_path, page)
 
-    chunks = process_page(
+    chunks, _ = process_page(
         file_path, raw_dir, examples_dir, includes_dir, "v1.36",
     )
 
@@ -203,8 +209,10 @@ def _make_config(tmp_path, pages_by_section):
     raw_dir = tmp_path / "raw"
     examples_dir = tmp_path / "examples"
     includes_dir = tmp_path / "includes"
+    glossary_dir = tmp_path / "glossary"
     examples_dir.mkdir(exist_ok=True)
     includes_dir.mkdir(exist_ok=True)
+    glossary_dir.mkdir(exist_ok=True)
 
     pages_config = {}
     for section, page_names in pages_by_section.items():
@@ -250,10 +258,10 @@ def test_run_pipeline_records_failed_page(tmp_path):
         "k8s_version": "v1.36",
         "pages": {"concepts": ["nonexistent.md"]},
     }
-    # raw dir exists but the file does not
     (tmp_path / "raw").mkdir()
     (tmp_path / "examples").mkdir()
     (tmp_path / "includes").mkdir()
+    (tmp_path / "glossary").mkdir()
 
     chunks, stats = run_pipeline(config, tmp_path)
 
@@ -267,6 +275,7 @@ def test_run_pipeline_empty_config(tmp_path):
     (tmp_path / "raw").mkdir()
     (tmp_path / "examples").mkdir()
     (tmp_path / "includes").mkdir()
+    (tmp_path / "glossary").mkdir()
 
     chunks, stats = run_pipeline(config, tmp_path)
 
@@ -281,7 +290,7 @@ def test_run_pipeline_allows_empty_chunk_page(tmp_path, monkeypatch):
 
     def fake_process_page(*args, **kwargs):
         del args, kwargs
-        return []
+        return [], set()
 
     monkeypatch.setattr(
         "k8s_rag.preprocessing.pipeline.process_page",
@@ -372,3 +381,55 @@ def test_write_jsonl_roundtrip(tmp_path):
         json.loads(line) for line in output_path.read_text().splitlines()
     ]
     assert recovered == chunks
+
+
+# ---------------------------------------------------------------------------
+# strip_whatsnext
+# ---------------------------------------------------------------------------
+
+def test_strip_whatsnext_removes_section():
+    content = "## Intro\n\nHello.\n\n## What's next\n\nLink to more stuff."
+    result = strip_whatsnext(content)
+    assert "Hello." in result
+    assert "What's next" not in result
+    assert "Link to more stuff" not in result
+
+
+def test_strip_whatsnext_no_match():
+    content = "## Intro\n\nContent only."
+    assert strip_whatsnext(content) == content
+
+
+def test_strip_whatsnext_case_insensitive():
+    content = "## intro\n\nHello.\n\n## what's next\n\nTail."
+    result = strip_whatsnext(content)
+    assert "Tail" not in result
+
+
+# ---------------------------------------------------------------------------
+# strip_inline_formatting
+# ---------------------------------------------------------------------------
+
+def test_strip_inline_formatting_backticks():
+    content = "Use `kubectl` to manage clusters."
+    result = strip_inline_formatting(content)
+    assert result == "Use kubectl to manage clusters."
+
+
+def test_strip_inline_formatting_bold():
+    content = "This is **important** text."
+    result = strip_inline_formatting(content)
+    assert result == "This is important text."
+
+
+def test_strip_inline_formatting_italic():
+    content = "This is _emphasized_ text."
+    result = strip_inline_formatting(content)
+    assert result == "This is emphasized text."
+
+
+def test_strip_inline_formatting_preserves_code_blocks():
+    content = "Intro `code`.\n\n```yaml\napiVersion: v1\n```\n\nAfter."
+    result = strip_inline_formatting(content)
+    assert "apiVersion: v1" in result
+    assert "Intro code." in result
