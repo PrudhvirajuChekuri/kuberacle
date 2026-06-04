@@ -27,7 +27,7 @@ _OVERLAP_SENTENCES = 2
 _OVERLAP_MAX_TOKENS = 150
 
 
-def _strip_anchor_ids(text):
+def _strip_anchor_ids(text: str) -> str:
     """Remove trailing {#anchor-id} markers from markdown heading lines.
 
     The anchors are already captured into the structural map; keeping
@@ -47,7 +47,7 @@ def _strip_anchor_ids(text):
     return "\n".join(clean(line) for line in text.split("\n"))
 
 
-def _format_breadcrumb(heading_hierarchy):
+def _format_breadcrumb(heading_hierarchy: list[str]) -> str:
     """Render the heading hierarchy as a bracketed breadcrumb line.
 
     Args:
@@ -60,7 +60,7 @@ def _format_breadcrumb(heading_hierarchy):
     return "[" + " > ".join(heading_hierarchy) + "]"
 
 
-def _carry_over_sentences(prev_chunk_text):
+def _carry_over_sentences(prev_chunk_text: str) -> str:
     """Return the trailing sentences of prev_chunk_text for overlap.
 
     Used to prepend a short bridge to the start of a continuation
@@ -89,12 +89,12 @@ def _carry_over_sentences(prev_chunk_text):
 
 
 def make_chunk_id(
-    file_path,
-    heading_text,
-    index=None,
-    heading_hierarchy=None,
-    line_number=None,
-):
+    file_path: str,
+    heading_text: str,
+    index: int | None = None,
+    heading_hierarchy: list[str] | None = None,
+    line_number: int | None = None,
+) -> str:
     """Generate a unique chunk ID from file path and heading.
 
     Args:
@@ -125,7 +125,7 @@ def make_chunk_id(
     return chunk_id
 
 
-def build_heading_tree(headings, total_lines):
+def build_heading_tree(headings: list[dict], total_lines: int) -> list[dict]:
     """Convert a flat list of headings into a nested tree.
 
     Each node represents a heading and contains its children (deeper
@@ -174,7 +174,7 @@ def build_heading_tree(headings, total_lines):
     return nodes
 
 
-def _get_own_content(lines, node):
+def _get_own_content(lines: list[str], node: dict) -> str:
     """Get a node's own content, excluding child sections.
 
     This is the text between the heading line and the start of
@@ -196,7 +196,7 @@ def _get_own_content(lines, node):
     return "\n".join(section_lines)
 
 
-def _get_full_content(lines, node):
+def _get_full_content(lines: list[str], node: dict) -> str:
     """Get all content under a node, including children.
 
     Args:
@@ -210,7 +210,7 @@ def _get_full_content(lines, node):
     return "\n".join(section_lines)
 
 
-def _is_inside_atomic(line_num, code_blocks, tables):
+def _is_inside_atomic(line_num: int, code_blocks: list[dict], tables: list[dict]) -> bool:
     """Check if a line is inside a code block or table.
 
     Args:
@@ -230,23 +230,30 @@ def _is_inside_atomic(line_num, code_blocks, tables):
     return False
 
 
-def _split_at_paragraphs(text, start_line, code_blocks, tables):
+def _split_at_paragraphs(
+    text: str,
+    start_line: int,
+    code_blocks: list[dict],
+    tables: list[dict],
+    target_tokens: int = TARGET_TOKENS,
+) -> list[str]:
     """Split text at paragraph boundaries, respecting atomic units.
 
     Finds blank-line boundaries that are not inside code blocks or
-    tables, and splits there to produce chunks under TARGET_TOKENS.
+    tables, and splits there to produce chunks under target_tokens.
 
     Args:
         text: The text to split.
         start_line: Line number offset for atomic unit checking.
         code_blocks: List of code block dicts.
         tables: List of table dicts.
+        target_tokens: Target chunk size in tokens.
 
     Returns:
         List of text strings, each a chunk.
     """
     lines = text.split("\n")
-    if estimate_tokens(text) <= TARGET_TOKENS:
+    if estimate_tokens(text) <= target_tokens:
         return [text]
 
     # Find safe split points (blank lines not inside atomic units)
@@ -269,7 +276,7 @@ def _split_at_paragraphs(text, start_line, code_blocks, tables):
     for sp in split_points:
         candidate = "\n".join(lines[current_start:sp])
 
-        if estimate_tokens(candidate) <= TARGET_TOKENS:
+        if estimate_tokens(candidate) <= target_tokens:
             last_safe_split = sp
         else:
             # Adding more would exceed target — split at last safe point
@@ -281,7 +288,7 @@ def _split_at_paragraphs(text, start_line, code_blocks, tables):
                 last_safe_split = None
                 # Re-check current split point for the new chunk
                 new_candidate = "\n".join(lines[current_start:sp])
-                if estimate_tokens(new_candidate) <= TARGET_TOKENS:
+                if estimate_tokens(new_candidate) <= target_tokens:
                     last_safe_split = sp
             else:
                 # Very first paragraph already exceeds target — emit it
@@ -309,17 +316,18 @@ def _split_at_paragraphs(text, start_line, code_blocks, tables):
     return with_overlap
 
 
-def _force_split(text):
+def _force_split(text: str, hard_cap_tokens: int = HARD_CAP_TOKENS) -> list[str]:
     """Last resort: split oversized text at line boundaries.
 
-    Used only when a chunk exceeds HARD_CAP_TOKENS and no
+    Used only when a chunk exceeds hard_cap_tokens and no
     paragraph or heading boundary is available.
 
     Args:
         text: The oversized text to split.
+        hard_cap_tokens: Maximum tokens per chunk.
 
     Returns:
-        List of text strings, each under HARD_CAP_TOKENS.
+        List of text strings, each under hard_cap_tokens.
     """
     lines = text.split("\n")
     chunks = []
@@ -328,7 +336,7 @@ def _force_split(text):
 
     for line in lines:
         test_text = current_text + "\n" + line if current_text else line
-        if estimate_tokens(test_text) > HARD_CAP_TOKENS and current_text:
+        if estimate_tokens(test_text) > hard_cap_tokens and current_text:
             chunks.append(current_text)
             current_lines = [line]
             current_text = line
@@ -342,23 +350,7 @@ def _force_split(text):
     return chunks
 
 
-def _get_heading_hierarchy(node, doc_title):
-    """Build the heading breadcrumb trail for a node.
-
-    Walks up from the node to the root, collecting heading texts,
-    then prepends the document title.
-
-    Args:
-        node: A heading tree node.
-        doc_title: The document's title from frontmatter.
-
-    Returns:
-        List of strings like ["Pods", "Pod lifetime", "Fault recovery"].
-    """
-    return [doc_title, node["heading"]["text"]]
-
-
-def _collect_content_flags(raw_content):
+def _collect_content_flags(raw_content: str) -> tuple[bool, list[str], bool]:
     """Collect has_code, code_types, has_table for a chunk's own text.
 
     Args:
@@ -374,7 +366,12 @@ def _collect_content_flags(raw_content):
     return bool(section_code), code_types, bool(section_tables)
 
 
-def _make_chunk(chunk_id, heading_hierarchy, raw_content, doc_metadata):
+def _make_chunk(
+    chunk_id: str,
+    heading_hierarchy: list[str],
+    raw_content: str,
+    doc_metadata: dict,
+) -> dict:
     """Build a chunk dict with all post-processing applied.
 
     Strips heading anchor markers, prepends the breadcrumb context
@@ -409,10 +406,18 @@ def _make_chunk(chunk_id, heading_hierarchy, raw_content, doc_metadata):
     }
 
 
-def _chunk_node(node, lines, doc_metadata, structure, parent_hierarchy):
+def _chunk_node(
+    node: dict,
+    lines: list[str],
+    doc_metadata: dict,
+    structure: dict,
+    parent_hierarchy: list[str],
+    target_tokens: int = TARGET_TOKENS,
+    hard_cap_tokens: int = HARD_CAP_TOKENS,
+) -> list[dict]:
     """Recursively chunk a heading tree node.
 
-    If the node's full content fits in TARGET_TOKENS, it becomes one
+    If the node's full content fits in target_tokens, it becomes one
     chunk. Otherwise, the node's own content becomes a chunk and
     children are recursed into. Oversized leaf content is split at
     paragraph boundaries.
@@ -423,6 +428,8 @@ def _chunk_node(node, lines, doc_metadata, structure, parent_hierarchy):
         doc_metadata: Document-level metadata dict.
         structure: Full structural map from analyze_structure.
         parent_hierarchy: Heading hierarchy from parent nodes.
+        target_tokens: Target chunk size in tokens.
+        hard_cap_tokens: Maximum tokens per chunk.
 
     Returns:
         List of chunk dicts.
@@ -432,7 +439,7 @@ def _chunk_node(node, lines, doc_metadata, structure, parent_hierarchy):
     hierarchy = parent_hierarchy + [node["heading"]["text"]]
     file_path = doc_metadata.get("file_path", "")
     # If the whole section fits, make one chunk
-    if full_tokens <= TARGET_TOKENS:
+    if full_tokens <= target_tokens:
         return [_make_chunk(
             chunk_id=make_chunk_id(
                 file_path,
@@ -451,7 +458,7 @@ def _chunk_node(node, lines, doc_metadata, structure, parent_hierarchy):
         # Node's own content (between heading and first child)
         own_text = _get_own_content(lines, node)
         if own_text.strip():
-            if estimate_tokens(own_text) <= TARGET_TOKENS:
+            if estimate_tokens(own_text) <= target_tokens:
                 chunks.append(_make_chunk(
                     chunk_id=make_chunk_id(
                         file_path,
@@ -470,6 +477,7 @@ def _chunk_node(node, lines, doc_metadata, structure, parent_hierarchy):
                     node["start_line"],
                     structure["code_blocks"],
                     structure["tables"],
+                    target_tokens=target_tokens,
                 )
                 for i, part in enumerate(parts):
                     idx = i if len(parts) > 1 else None
@@ -490,6 +498,8 @@ def _chunk_node(node, lines, doc_metadata, structure, parent_hierarchy):
         for child in node["children"]:
             chunks.extend(_chunk_node(
                 child, lines, doc_metadata, structure, hierarchy,
+                target_tokens=target_tokens,
+                hard_cap_tokens=hard_cap_tokens,
             ))
     else:
         # Leaf node that's too big — split at paragraphs
@@ -498,19 +508,20 @@ def _chunk_node(node, lines, doc_metadata, structure, parent_hierarchy):
             node["start_line"],
             structure["code_blocks"],
             structure["tables"],
+            target_tokens=target_tokens,
         )
 
-        for i, part in enumerate(parts):
+        flat_idx = 0
+        for part in parts:
             # Apply hard cap
-            if estimate_tokens(part) > HARD_CAP_TOKENS:
-                sub_parts = _force_split(part)
+            if estimate_tokens(part) > hard_cap_tokens:
+                sub_parts = _force_split(part, hard_cap_tokens=hard_cap_tokens)
             else:
                 sub_parts = [part]
 
-            for j, sub in enumerate(sub_parts):
-                idx = i if len(parts) > 1 else None
-                if j > 0:
-                    idx = (i * 10) + j
+            for sub in sub_parts:
+                idx = flat_idx if len(parts) > 1 or len(sub_parts) > 1 else None
+                flat_idx += 1
                 chunks.append(_make_chunk(
                     chunk_id=make_chunk_id(
                         file_path,
@@ -527,26 +538,32 @@ def _chunk_node(node, lines, doc_metadata, structure, parent_hierarchy):
     return chunks
 
 
-def chunk_document(content, structure, metadata, cross_references=None):
+def chunk_document(
+    content: str,
+    structure: dict,
+    metadata: dict,
+    *,
+    target_tokens: int = TARGET_TOKENS,
+    hard_cap_tokens: int = HARD_CAP_TOKENS,
+) -> list[dict]:
     """Split a resolved document into retrieval-ready chunks.
 
     This is the main entry point for the chunker. It builds a heading
     tree, recursively chunks each section, and handles intro content
     before the first heading. Cross-references are derived from each
-    chunk's own content; the optional cross_references argument is
-    retained for backward compatibility but ignored.
+    chunk's own content.
 
     Args:
         content: Resolved markdown string.
         structure: Structural map from analyze_structure().
         metadata: Document metadata from extract_metadata().
-        cross_references: Deprecated. Kept for backward compatibility.
+        target_tokens: Target chunk size in tokens (default 800).
+        hard_cap_tokens: Hard cap chunk size in tokens (default 1600).
 
     Returns:
         List of chunk dicts, each containing content, metadata,
         and retrieval flags.
     """
-    del cross_references  # superseded by chunk-local extraction
     lines = content.split("\n")
     total_lines = len(lines)
     headings = structure["headings"]
@@ -561,22 +578,55 @@ def chunk_document(content, structure, metadata, cross_references=None):
     if first_heading_line > 0:
         intro_text = "\n".join(lines[:first_heading_line]).strip()
         if intro_text:
-            chunks.append(_make_chunk(
-                chunk_id=make_chunk_id(
-                    file_path,
-                    "intro",
+            if estimate_tokens(intro_text) <= target_tokens:
+                chunks.append(_make_chunk(
+                    chunk_id=make_chunk_id(
+                        file_path,
+                        "intro",
+                        heading_hierarchy=[doc_title],
+                        line_number=0,
+                    ),
                     heading_hierarchy=[doc_title],
-                    line_number=0,
-                ),
-                heading_hierarchy=[doc_title],
-                raw_content=intro_text,
-                doc_metadata=metadata,
-            ))
+                    raw_content=intro_text,
+                    doc_metadata=metadata,
+                ))
+            else:
+                parts = _split_at_paragraphs(
+                    intro_text, 0,
+                    structure["code_blocks"],
+                    structure["tables"],
+                    target_tokens=target_tokens,
+                )
+                flat_idx = 0
+                for part in parts:
+                    if estimate_tokens(part) > hard_cap_tokens:
+                        sub_parts = _force_split(
+                            part, hard_cap_tokens=hard_cap_tokens,
+                        )
+                    else:
+                        sub_parts = [part]
+                    for sub in sub_parts:
+                        idx = flat_idx if len(parts) > 1 or len(sub_parts) > 1 else None
+                        flat_idx += 1
+                        chunks.append(_make_chunk(
+                            chunk_id=make_chunk_id(
+                                file_path,
+                                "intro",
+                                idx,
+                                heading_hierarchy=[doc_title],
+                                line_number=0,
+                            ),
+                            heading_hierarchy=[doc_title],
+                            raw_content=sub,
+                            doc_metadata=metadata,
+                        ))
 
     # Recursively chunk each root-level section
     for node in tree:
         chunks.extend(_chunk_node(
             node, lines, metadata, structure, [doc_title],
+            target_tokens=target_tokens,
+            hard_cap_tokens=hard_cap_tokens,
         ))
 
     return chunks

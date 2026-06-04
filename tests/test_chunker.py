@@ -83,7 +83,7 @@ def test_small_document_single_chunk():
     """A short document should become one or two chunks (intro + section)."""
     content = "Intro text.\n\n## Section\n\nSmall content."
     structure = analyze_structure(content)
-    chunks = chunk_document(content, structure, _make_metadata(), [])
+    chunks = chunk_document(content, structure, _make_metadata())
     total_tokens = sum(c["token_count"] for c in chunks)
     assert total_tokens < TARGET_TOKENS
     assert all(c["token_count"] <= TARGET_TOKENS for c in chunks)
@@ -95,7 +95,7 @@ def test_no_chunks_exceed_hard_cap():
     paragraphs = ["Paragraph text. " * 40 + "\n" for _ in range(10)]
     content = "## Big Section\n\n" + "\n".join(paragraphs)
     structure = analyze_structure(content)
-    chunks = chunk_document(content, structure, _make_metadata(), [])
+    chunks = chunk_document(content, structure, _make_metadata())
     for c in chunks:
         assert c["token_count"] <= HARD_CAP_TOKENS, (
             f"Chunk '{c['chunk_id']}' has {c['token_count']} tokens"
@@ -107,7 +107,7 @@ def test_code_blocks_stay_atomic():
     yaml_block = "```yaml\n" + "key: value\n" * 20 + "```"
     content = f"## Section\n\nSome text.\n\n{yaml_block}\n\nMore text."
     structure = analyze_structure(content)
-    chunks = chunk_document(content, structure, _make_metadata(), [])
+    chunks = chunk_document(content, structure, _make_metadata())
     # The yaml content should appear entirely in one chunk
     for c in chunks:
         if "key: value" in c["content"]:
@@ -122,7 +122,7 @@ def test_metadata_propagated_to_chunks():
     content = "## Section A\n\nContent A.\n\n## Section B\n\nContent B."
     structure = analyze_structure(content)
     metadata = _make_metadata()
-    chunks = chunk_document(content, structure, metadata, [])
+    chunks = chunk_document(content, structure, metadata)
     for c in chunks:
         assert c["title"] == "Test Doc"
         assert c["content_type"] == "concept"
@@ -139,7 +139,7 @@ def test_chunk_ids_unique():
         "## Section C\n\nContent."
     )
     structure = analyze_structure(content)
-    chunks = chunk_document(content, structure, _make_metadata(), [])
+    chunks = chunk_document(content, structure, _make_metadata())
     ids = [c["chunk_id"] for c in chunks]
     assert len(ids) == len(set(ids)), f"Duplicate IDs found: {ids}"
 
@@ -181,7 +181,7 @@ def test_heading_hierarchy_includes_doc_title():
     """Every chunk's heading_hierarchy should start with the doc title."""
     content = "## Section\n\n### Subsection\n\nContent."
     structure = analyze_structure(content)
-    chunks = chunk_document(content, structure, _make_metadata(), [])
+    chunks = chunk_document(content, structure, _make_metadata())
     for c in chunks:
         assert c["heading_hierarchy"][0] == "Test Doc"
 
@@ -194,7 +194,7 @@ def test_content_flags_accurate():
         "## Text Section\n\nJust words."
     )
     structure = analyze_structure(content)
-    chunks = chunk_document(content, structure, _make_metadata(), [])
+    chunks = chunk_document(content, structure, _make_metadata())
 
     code_chunk = [c for c in chunks if "Code" in c["heading_hierarchy"][-1]][0]
     assert code_chunk["has_code"] is True
@@ -216,7 +216,7 @@ def test_heading_anchor_id_stripped_from_content():
         "Some content about readiness."
     )
     structure = analyze_structure(content)
-    chunks = chunk_document(content, structure, _make_metadata(), [])
+    chunks = chunk_document(content, structure, _make_metadata())
     for c in chunks:
         assert "{#" not in c["content"]
         assert "}" not in c["content"] or "{" in c["content"]
@@ -232,7 +232,7 @@ def test_cross_references_are_chunk_local():
         "## Unrelated\n\n"
         "Read about [Borg](https://research.google/pubs/borg/) here."
     )
-    resolved, _ = process_links(raw_content)
+    resolved = process_links(raw_content)
     structure = analyze_structure(resolved)
     chunks = chunk_document(resolved, structure, _make_metadata())
 
@@ -333,13 +333,24 @@ def test_split_chunk_flags_are_chunk_local():
     assert all(c["has_code"] is False for c in prose_chunks)
 
 
-def test_chunk_document_accepts_legacy_cross_references_arg():
-    """The deprecated cross_references arg is silently ignored."""
-    content = "## Section\n\nContent with [a link](https://example.com/x)."
+def test_oversized_intro_is_split():
+    """Intro content exceeding target_tokens should be split."""
+    paragraphs = ["Intro paragraph. " * 40 for _ in range(20)]
+    intro = "\n\n".join(paragraphs)
+    content = f"{intro}\n\n## Section\n\nBody text."
     structure = analyze_structure(content)
-    chunks = chunk_document(
+    chunks = chunk_document(content, structure, _make_metadata())
+    intro_chunks = [c for c in chunks if c["heading_hierarchy"] == ["Test Doc"]]
+    assert len(intro_chunks) >= 2, "expected oversized intro to be split"
+
+
+def test_custom_token_limits():
+    """Custom target_tokens and hard_cap_tokens should be respected."""
+    content = "## Section\n\n" + "Some text. " * 100
+    structure = analyze_structure(content)
+    chunks_default = chunk_document(content, structure, _make_metadata())
+    chunks_small = chunk_document(
         content, structure, _make_metadata(),
-        cross_references=["https://ignored.example/y"],
+        target_tokens=50, hard_cap_tokens=200,
     )
-    for c in chunks:
-        assert "https://ignored.example/y" not in c["cross_references"]
+    assert len(chunks_small) >= len(chunks_default)
