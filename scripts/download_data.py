@@ -2,6 +2,8 @@
 
 import argparse
 import re
+import time
+import tomllib
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -13,15 +15,15 @@ from k8s_rag.preprocessing.page_selection import resolve_pages, _owner_repo_from
 
 # Repository root (assumes script is run from project root)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = PROJECT_ROOT / "configs" / "selected_pages.yaml"
+CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "smoke.yaml"
 DATA_DIR = PROJECT_ROOT / "data"
 
 
-def load_config(config_path):
+def load_config(config_path: str | Path) -> dict:
     """Load and return the page selection config.
 
     Args:
-        config_path: Path to the selected_pages.yaml file.
+        config_path: Path to the dataset config YAML file.
 
     Returns:
         Dict containing source repo info and page lists.
@@ -30,7 +32,7 @@ def load_config(config_path):
         return yaml.safe_load(f)
 
 
-def build_raw_url(repo_url, branch, path):
+def build_raw_url(repo_url: str, branch: str, path: str) -> str:
     """Convert a GitHub repo URL and file path to a raw content URL.
 
     Args:
@@ -45,40 +47,88 @@ def build_raw_url(repo_url, branch, path):
     return f"https://raw.githubusercontent.com/{owner_repo}/{branch}/{path}"
 
 
-def fetch_file(url):
-    """Fetch a file's content from a URL.
+def fetch_file(url: str, quiet: bool = False) -> str | None:
+    """Fetch a file's content from a URL with retries.
+
+    Retries up to 3 times on network errors with exponential backoff.
+    Does not retry on HTTP errors (e.g., 404) since those are definitive.
 
     Args:
         url: The URL to fetch.
+        quiet: If True, suppress HTTP error output (useful when
+            fallback paths will be tried).
 
     Returns:
-        File content as a string, or None if the fetch failed.
+        File content as a string, or None if all attempts failed.
     """
-    try:
-        request = Request(url, headers={"User-Agent": "k8s-docs-rag"})
-        with urlopen(request, timeout=15) as response:
-            return response.read().decode("utf-8")
-    except HTTPError as e:
-        print(f"  HTTP {e.code}: {url}")
-        return None
-    except URLError as e:
-        print(f"  Network error: {e.reason} — {url}")
-        return None
+    retries = 3
+    for attempt in range(1, retries + 1):
+        try:
+            request = Request(url, headers={"User-Agent": "k8s-docs-rag"})
+            with urlopen(request, timeout=15) as response:
+                return response.read().decode("utf-8")
+        except HTTPError as e:
+            if not quiet:
+                print(f"  HTTP {e.code}: {url}")
+            return None
+        except URLError as e:
+            if attempt == retries:
+                if not quiet:
+                    print(f"  Network error: {e.reason} — {url}")
+                return None
+            sleep_seconds = 2 ** (attempt - 1)
+            print(
+                f"  Fetch attempt {attempt}/{retries} failed ({e.reason}); "
+                f"retrying in {sleep_seconds}s..."
+            )
+            time.sleep(sleep_seconds)
+    return None
 
 
-def save_file(content, path):
+def fetch_k8s_version(config: dict) -> str:
+    """Fetch the current Kubernetes docs version from hugo.toml in the source repo.
+
+    The Hugo site config is the authoritative source for the version param that
+    {{< param "version" >}} and {{< skew currentVersion >}} shortcodes resolve to.
+    Fetching it dynamically keeps the pipeline in sync with source_branch: main.
+
+    Args:
+        config: Parsed config dict with source_repo and source_branch.
+
+    Returns:
+        Version string with leading "v" (e.g., "v1.36").
+
+    Raises:
+        RuntimeError: If hugo.toml cannot be fetched or version is not found.
+    """
+    url = build_raw_url(config["source_repo"], config["source_branch"], "hugo.toml")
+    content = fetch_file(url)
+    if content is None:
+        raise RuntimeError(f"Failed to fetch hugo.toml from {url}")
+    hugo_config = tomllib.loads(content)
+    version = hugo_config.get("params", {}).get("version", "")
+    if not version:
+        raise RuntimeError("Could not find params.version in hugo.toml")
+    version = str(version)
+    if not version.startswith("v"):
+        version = f"v{version}"
+    return version
+
+
+def save_file(content: str, path: str | Path) -> None:
     """Save content to a local file, creating directories as needed.
 
     Args:
         content: String content to write.
         path: Destination file path.
     """
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         f.write(content)
 
 
-def scan_code_samples(content):
+def scan_code_samples(content: str) -> list[str]:
     """Extract code_sample file references from markdown content.
 
     Finds patterns like {{% code_sample file="pods/simple-pod.yaml" %}}
@@ -93,7 +143,7 @@ def scan_code_samples(content):
     return re.findall(r'code_sample\s+file="([^"]+)"', content)
 
 
-def scan_includes(content):
+def scan_includes(content: str) -> list[str]:
     """Extract include file references from markdown content.
 
     Finds patterns like {{< include "task-tutorial-prereqs.md" >}}
@@ -107,6 +157,21 @@ def scan_includes(content):
     """
     pattern = r'{{[<%]\s*include\s+"([^"]+)"\s*[>%]}}'
     return re.findall(pattern, content)
+
+
+def scan_glossary_definitions(content: str) -> list[str]:
+    """Extract term_id references from glossary_definition shortcodes.
+
+    Finds patterns like {{< glossary_definition term_id="ingress" length="all" >}}
+    and returns the term IDs.
+
+    Args:
+        content: Raw markdown string.
+
+    Returns:
+        List of term IDs referenced by glossary_definition shortcodes.
+    """
+    return re.findall(r'glossary_definition\s+term_id="([^"]+)"', content)
 
 
 def normalize_repo_relative_path(path: str, path_type: str) -> str:
@@ -132,14 +197,15 @@ def normalize_repo_relative_path(path: str, path_type: str) -> str:
     return cleaned
 
 
-def download_pages(config, page_map):
+def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, int]:
     """Download all pages listed in the config and their dependencies.
 
-    Fetches raw markdown files, then scans each for code_sample and
-    include references and fetches those too.
+    Fetches raw markdown files, then scans each for code_sample, include,
+    and glossary_definition references and fetches those too.
 
     Args:
-        config: Parsed config dict from selected_pages.yaml.
+        config: Parsed config dict from the dataset YAML.
+        page_map: Section-to-pages map from resolve_pages().
 
     Returns:
         Dict with counts of downloaded files by type.
@@ -149,10 +215,12 @@ def download_pages(config, page_map):
     docs_path = config["docs_path"]
     examples_path = config["examples_path"]
     includes_path = config["includes_path"]
+    glossary_path = config.get("glossary_path", "")
 
     referenced_examples = set()
     referenced_includes: dict[str, set[str]] = {}
-    counts = {"pages": 0, "examples": 0, "includes": 0, "failed": 0}
+    referenced_glossary_terms: set[str] = set()
+    counts = {"pages": 0, "examples": 0, "includes": 0, "glossary": 0, "failed": 0}
 
     # Download doc pages
     for section, pages in page_map.items():
@@ -176,6 +244,7 @@ def download_pages(config, page_map):
             source_dir = str(Path(section) / Path(page).parent)
             for include_ref in scan_includes(content):
                 referenced_includes.setdefault(include_ref, set()).add(source_dir)
+            referenced_glossary_terms.update(scan_glossary_definitions(content))
 
     # Download referenced example files
     for example_file in sorted(referenced_examples):
@@ -222,16 +291,42 @@ def download_pages(config, page_map):
         print(f"Fetching include: {normalized_include}")
         for remote_path in candidate_remote_paths:
             url = build_raw_url(repo_url, branch, remote_path)
-            fetched_content = fetch_file(url)
+            fetched_content = fetch_file(url, quiet=True)
             if fetched_content is not None:
                 break
 
         if fetched_content is None:
+            print(f"  Not found at any candidate path: {normalized_include}")
             counts["failed"] += 1
             continue
 
         save_file(fetched_content, local_path)
         counts["includes"] += 1
+
+    # Download referenced glossary term files
+    if glossary_path:
+        for term_id in sorted(referenced_glossary_terms):
+            try:
+                normalized_term = normalize_repo_relative_path(
+                    f"{term_id}.md", "glossary term"
+                )
+            except ValueError as exc:
+                print(f"  Invalid glossary term reference: {exc}")
+                counts["failed"] += 1
+                continue
+            remote_path = f"{glossary_path}/{normalized_term}"
+            local_path = DATA_DIR / "glossary" / normalized_term
+            url = build_raw_url(repo_url, branch, remote_path)
+
+            print(f"Fetching glossary term: {term_id}")
+            content = fetch_file(url)
+
+            if content is None:
+                counts["failed"] += 1
+                continue
+
+            save_file(content, local_path)
+            counts["glossary"] += 1
 
     return counts
 
@@ -273,7 +368,12 @@ def main():
     print(f"Loading config from {config_path}")
     config = load_config(config_path)
     print(f"Source: {config['source_repo']} ({config['source_branch']})")
-    print(f"K8s version: {config['k8s_version']}")
+
+    print("Fetching k8s version from source repo...")
+    k8s_version = fetch_k8s_version(config)
+    print(f"K8s version: {k8s_version}")
+    save_file(k8s_version, DATA_DIR / "k8s_version.txt")
+
     sections = args.sections.split(",") if args.sections else None
     page_map = resolve_pages(
         config=config,
@@ -286,8 +386,11 @@ def main():
 
     counts = download_pages(config, page_map)
 
-    print(f"\nDone: {counts['pages']} pages, {counts['examples']} examples, "
-          f"{counts['includes']} includes, {counts['failed']} failed")
+    print(
+        f"\nDone: {counts['pages']} pages, {counts['examples']} examples, "
+        f"{counts['includes']} includes, {counts['glossary']} glossary terms, "
+        f"{counts['failed']} failed"
+    )
     if counts["failed"] > 0 and not args.allow_partial:
         raise SystemExit(1)
 
