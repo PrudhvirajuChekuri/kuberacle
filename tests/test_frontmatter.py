@@ -79,7 +79,7 @@ def test_parse_frontmatter_triple_dashes_in_body():
 
 def test_derive_metadata_index_file():
     """_index.md files should produce a URL ending at the parent directory."""
-    result = derive_metadata("concepts/workloads/pods/_index.md")
+    result = derive_metadata("concepts/workloads/pods/_index.md", "v1.36")
     assert result["source_url"] == "https://kubernetes.io/docs/concepts/workloads/pods/"
     assert result["content_type"] == "concept"
     assert result["section_path"] == ["concepts", "workloads", "pods"]
@@ -88,18 +88,18 @@ def test_derive_metadata_index_file():
 
 def test_derive_metadata_regular_file():
     """Regular .md files should include the filename (without .md) in the URL."""
-    result = derive_metadata("concepts/workloads/pods/pod-lifecycle.md")
+    result = derive_metadata("concepts/workloads/pods/pod-lifecycle.md", "v1.36")
     assert result["source_url"] == "https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/"
 
 
 def test_derive_metadata_task():
-    result = derive_metadata("tasks/debug/debug-application/debug-pods.md")
+    result = derive_metadata("tasks/debug/debug-application/debug-pods.md", "v1.36")
     assert result["content_type"] == "task"
     assert result["section_path"] == ["tasks", "debug", "debug-application"]
 
 
 def test_derive_metadata_tutorial():
-    result = derive_metadata("tutorials/stateless-application/expose-external-ip-address.md")
+    result = derive_metadata("tutorials/stateless-application/expose-external-ip-address.md", "v1.36")
     assert result["content_type"] == "tutorial"
 
 
@@ -113,7 +113,7 @@ def test_derive_metadata_custom_version():
 def test_extract_metadata_merges_frontmatter_and_derived():
     """Frontmatter fields and derived fields should coexist in the result."""
     content = "---\ntitle: Pods\nweight: 10\n---\nBody here."
-    metadata, body = extract_metadata(content, "concepts/workloads/pods/_index.md")
+    metadata, body = extract_metadata(content, "concepts/workloads/pods/_index.md", "v1.36")
 
     # From frontmatter
     assert metadata["title"] == "Pods"
@@ -128,5 +128,12 @@ def test_extract_metadata_merges_frontmatter_and_derived():
 def test_extract_metadata_content_type_overlap():
     """When frontmatter has content_type, derived value should match."""
     content = "---\ntitle: Pods\ncontent_type: concept\n---\nBody."
-    metadata, _ = extract_metadata(content, "concepts/workloads/pods/_index.md")
+    metadata, _ = extract_metadata(content, "concepts/workloads/pods/_index.md", "v1.36")
     assert metadata["content_type"] == "concept"
+
+
+def test_parse_frontmatter_non_dict_raises():
+    """Frontmatter that parses to a non-dict YAML value should raise."""
+    content = "---\n- just a list item\n---\nBody."
+    with pytest.raises(ValueError, match="YAML mapping"):
+        parse_frontmatter(content)

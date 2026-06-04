@@ -17,7 +17,7 @@ _TABLE_SEPARATOR = re.compile(
 )
 
 
-def _is_table_separator(line):
+def _is_table_separator(line: str) -> bool:
     """Return True if a line is a GFM table separator row.
 
     Args:
@@ -30,7 +30,7 @@ def _is_table_separator(line):
     return bool(_TABLE_SEPARATOR.match(line))
 
 
-def estimate_tokens(text):
+def estimate_tokens(text: str) -> int:
     """Estimate token count for a text string.
 
     Uses a rough heuristic of words * 1.3, which is close enough
@@ -46,7 +46,7 @@ def estimate_tokens(text):
     return int(words * 1.3)
 
 
-def classify_code_block(language, content):
+def classify_code_block(language: str, content: str) -> str:
     """Classify a fenced code block by its content type.
 
     Args:
@@ -68,7 +68,7 @@ def classify_code_block(language, content):
     return language or "text"
 
 
-def analyze_structure(content):
+def analyze_structure(content: str) -> dict:
     """Build a structural map of a resolved markdown document.
 
     Scans the document line by line, tracking whether we're inside
@@ -180,6 +180,21 @@ def analyze_structure(content):
                 in_table = True
                 table_start = i
 
+    # Handle unclosed code block at end of document
+    if in_code_block:
+        print(
+            f"WARNING: unclosed code fence starting at line {code_start}, "
+            "recording block to end of document"
+        )
+        code_content = "\n".join(code_content_lines)
+        code_type = classify_code_block(code_language, code_content)
+        code_blocks.append({
+            "start_line": code_start,
+            "end_line": len(lines) - 1,
+            "language": code_language,
+            "code_type": code_type,
+        })
+
     # Close any open table at end of document
     if in_table:
         tables.append({
@@ -198,7 +213,12 @@ def analyze_structure(content):
     }
 
 
-def _build_sections(lines, headings, code_blocks, tables):
+def _build_sections(
+    lines: list[str],
+    headings: list[dict],
+    code_blocks: list[dict],
+    tables: list[dict],
+) -> list[dict]:
     """Build section boundaries from headings with content analysis.
 
     Each section spans from one heading to the next heading of the
@@ -264,8 +284,15 @@ def _build_sections(lines, headings, code_blocks, tables):
     return sections
 
 
-def _make_section(heading_text, heading_level, start_line, end_line,
-                  section_text, code_blocks, tables):
+def _make_section(
+    heading_text: str,
+    heading_level: int,
+    start_line: int,
+    end_line: int,
+    section_text: str,
+    code_blocks: list[dict],
+    tables: list[dict],
+) -> dict:
     """Create a section dict with content analysis.
 
     Args:
