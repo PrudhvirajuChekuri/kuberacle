@@ -6,10 +6,12 @@ chunking), and writes the output as JSONL.
 """
 
 import json
+import logging
 import re
-import traceback
 from collections import Counter
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from k8s_rag.preprocessing.frontmatter import extract_metadata
 from k8s_rag.preprocessing.shortcodes import resolve_shortcodes
@@ -188,7 +190,7 @@ def run_pipeline(
     for section, pages in config["pages"].items():
         for page in pages:
             file_path = f"{section}/{page}"
-            print(f"Processing {file_path}")
+            logger.info("Processing %s", file_path)
 
             try:
                 chunks, unhandled = process_page(
@@ -209,7 +211,7 @@ def run_pipeline(
                     "max_tokens": max(tokens) if tokens else 0,
                 })
             except Exception as e:
-                print(f"  ERROR: {e}\n{traceback.format_exc()}")
+                logger.error("Failed to process %s: %s", file_path, e, exc_info=True)
                 page_stats.append({
                     "file": file_path,
                     "chunks": 0,

@@ -1,0 +1,17 @@
+# Core
+tqdm
+pyyaml>=6.0
+google-genai
+google-auth
+google-cloud-storage
+requests
+python-dotenv
+chromadb
+rank-bm25
+
+# Dev
+pytest>=7.0
+
+# Eval (optional)
+datasets
+ragas

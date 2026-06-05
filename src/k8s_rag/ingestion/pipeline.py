@@ -1,10 +1,15 @@
 """Ingestion pipeline from JSONL chunks to vector store."""
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
+from tqdm import tqdm
+
 from k8s_rag.ingestion.schemas import ChunkRecord
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionPipeline:
@@ -56,6 +61,7 @@ class IngestionPipeline:
                         metadata=metadata,
                     )
                 )
+        logger.info("Loaded %d chunks from %s", len(chunks), jsonl_path)
         return chunks
 
     def run(self, jsonl_path: str | Path) -> dict[str, int]:
@@ -68,13 +74,19 @@ class IngestionPipeline:
             Ingestion summary stats.
         """
         chunks = self.load_chunks(jsonl_path)
+        total = len(chunks)
         upserted = 0
+        total_batches = (total + self.batch_size - 1) // self.batch_size
 
-        for start in range(0, len(chunks), self.batch_size):
-            batch = chunks[start:start + self.batch_size]
-            texts = [chunk.content for chunk in batch]
-            embeddings = self.embedder.embed_texts(texts)
-            self.vector_store.upsert_chunks(batch, embeddings)
-            upserted += len(batch)
+        logger.info("Starting ingestion: %d chunks, batch_size=%d", total, self.batch_size)
+        batch_ranges = list(range(0, total, self.batch_size))
+        with tqdm(batch_ranges, desc="Ingesting", unit="batch") as progress:
+            for start in progress:
+                batch = chunks[start:start + self.batch_size]
+                texts = [chunk.content for chunk in batch]
+                embeddings = self.embedder.embed_texts(texts)
+                self.vector_store.upsert_chunks(batch, embeddings)
+                upserted += len(batch)
 
+        logger.info("Ingestion complete: %d chunks upserted", upserted)
         return {"upserted_chunks": upserted}

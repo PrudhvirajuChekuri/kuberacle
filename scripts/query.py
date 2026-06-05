@@ -5,6 +5,7 @@ Usage:
 """
 
 import argparse
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -42,6 +43,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Run retrieval and answer generation for one question."""
     args = parse_args()
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+    )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     config = load_rag_config(CONFIG_PATH)
 
     embedder = VertexAIEmbedder(

@@ -1,10 +1,13 @@
 """Question-answer orchestration with citations."""
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
 from k8s_rag.retrieval.generator import extract_citation_indices
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -54,8 +57,10 @@ class RAGQASystem:
         Returns:
             QA result with answer and citations.
         """
+        logger.info("Processing question: %r", question[:100])
         chunks = self.retriever.retrieve(question, top_k=top_k)
         if not chunks:
+            logger.warning("No chunks retrieved for question: %r", question[:100])
             return QAResult(
                 answer=(
                     "INSUFFICIENT_EVIDENCE. I could not retrieve supporting "
@@ -65,8 +70,10 @@ class RAGQASystem:
                 retrieved_chunks=[],
             )
 
+        logger.debug("Retrieved %d chunks; generating answer", len(chunks))
         answer = self.generator.generate(question, chunks)
         used_indices = extract_citation_indices(answer)
+        logger.debug("Extracted %d citation indices from answer", len(used_indices))
 
         if self.strict_used_only:
             if not used_indices:
@@ -111,6 +118,7 @@ class RAGQASystem:
 
     def _insufficient_with_chunks(self, chunks: list[RetrievedChunk]) -> QAResult:
         """Build insufficient evidence result."""
+        logger.warning("Insufficient evidence: could not verify supported citations")
         return QAResult(
             answer=(
                 "INSUFFICIENT_EVIDENCE. I could not verify enough supported "

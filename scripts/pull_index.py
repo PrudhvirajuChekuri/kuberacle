@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import logging
 import shutil
 import tarfile
 import tempfile
@@ -17,6 +18,8 @@ from k8s_rag.ingestion.config import load_rag_config
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "configs" / "rag.yaml"
 MANIFEST_OBJECT = "index/manifest.json"
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,7 +59,7 @@ def _validate_manifest(manifest: dict, config) -> None:
         warnings.append("k8s_version unknown in manifest — index may be stale")
 
     for w in warnings:
-        print(f"WARNING: {w}")
+        logger.warning("%s", w)
 
     if errors:
         raise SystemExit(
@@ -66,6 +69,12 @@ def _validate_manifest(manifest: dict, config) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
+
     args = parse_args()
     config = load_rag_config(CONFIG_PATH)
     index_path = PROJECT_ROOT / config.persist_directory
@@ -75,15 +84,16 @@ def main() -> None:
     client = storage.Client()
     bucket = client.bucket(args.bucket)
 
-    print(f"Validating manifest at gs://{args.bucket}/{MANIFEST_OBJECT} ...")
+    logger.info("Validating manifest at gs://%s/%s", args.bucket, MANIFEST_OBJECT)
     manifest_blob = bucket.blob(MANIFEST_OBJECT)
     if manifest_blob.exists():
         manifest = json.loads(manifest_blob.download_as_text())
-        print(
-            f"  k8s={manifest.get('k8s_version')} "
-            f"model={manifest.get('embedding_model_id')} "
-            f"collection={manifest.get('collection_name')} "
-            f"created={manifest.get('created_at', 'unknown')}"
+        logger.info(
+            "k8s=%s model=%s collection=%s created=%s",
+            manifest.get("k8s_version"),
+            manifest.get("embedding_model_id"),
+            manifest.get("collection_name"),
+            manifest.get("created_at", "unknown"),
         )
         _validate_manifest(manifest, config)
     else:
@@ -94,7 +104,7 @@ def main() -> None:
 
     tmp_path = Path(tempfile.mktemp(suffix=".tar.gz"))
     try:
-        print(f"Downloading gs://{args.bucket}/{args.object} ...")
+        logger.info("Downloading gs://%s/%s", args.bucket, args.object)
         blob = bucket.blob(args.object)
         blob.download_to_filename(str(tmp_path))
 
@@ -102,10 +112,10 @@ def main() -> None:
             shutil.rmtree(index_path)
 
         index_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Extracting to {index_path.parent} ...")
+        logger.info("Extracting to %s", index_path.parent)
         with tarfile.open(tmp_path, "r:gz") as tar:
             tar.extractall(index_path.parent)
-        print(f"Index ready at {index_path}")
+        logger.info("Index ready at %s", index_path)
     finally:
         tmp_path.unlink(missing_ok=True)
 

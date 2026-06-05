@@ -1,9 +1,12 @@
 """Discovery Engine reranker with ADC bearer token auth."""
 
+import logging
 from typing import Any
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
 from k8s_rag.retrieval.constants import DISCOVERY_ENGINE_RANK_URL
+
+logger = logging.getLogger(__name__)
 
 
 class DiscoveryEngineReranker:
@@ -76,6 +79,7 @@ class DiscoveryEngineReranker:
             Reranked chunk list, or original order on failure.
         """
         if not self.enabled or not chunks:
+            logger.debug("Reranker disabled or no candidates; returning top_%d unchanged", top_k)
             return chunks[:top_k]
 
         url = DISCOVERY_ENGINE_RANK_URL.format(
@@ -93,6 +97,7 @@ class DiscoveryEngineReranker:
             "topN": top_k,
         }
 
+        logger.debug("Reranking %d candidates for query=%r", len(chunks), query[:80])
         try:
             token = self._get_bearer_token()
             response = self.session.post(
@@ -102,8 +107,8 @@ class DiscoveryEngineReranker:
             )
             response.raise_for_status()
             results = response.json().get("records", [])
-        except Exception:
-            # Keep the pipeline resilient; use hybrid scores if reranker fails.
+        except Exception as exc:
+            logger.warning("Reranker API call failed: %s; falling back to hybrid scores", exc)
             return chunks[:top_k]
 
         if not results:
@@ -128,4 +133,6 @@ class DiscoveryEngineReranker:
                     score=float(item.get("score", base.score)),
                 )
             )
-        return reranked[:top_k] if reranked else chunks[:top_k]
+        final = reranked[:top_k] if reranked else chunks[:top_k]
+        logger.debug("Reranker returned %d results", len(final))
+        return final

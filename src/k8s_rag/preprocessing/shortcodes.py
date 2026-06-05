@@ -6,11 +6,14 @@ dedicated resolver function, and the main resolve_shortcodes function
 orchestrates them in the correct order.
 """
 
+import logging
 import re
 from collections import Counter
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 HEADING_MAP = {
@@ -83,12 +86,12 @@ def resolve_code_samples(content: str, examples_dir: str | Path) -> str:
         file_path = file_match.group(1)
         rel_path = _safe_relative_path(file_path)
         if rel_path is None:
-            print(f"WARNING: code_sample not found: {file_path}")
+            logger.warning("code_sample not found: %s", file_path)
             return ""
         full_path = Path(examples_dir) / rel_path
 
         if not full_path.exists():
-            print(f"WARNING: code_sample not found: {file_path}")
+            logger.warning("code_sample not found: %s", file_path)
             return ""
 
         code = full_path.read_text().rstrip("\n")
@@ -119,12 +122,12 @@ def resolve_includes(content: str, includes_dir: str | Path) -> str:
         filename = match.group(1)
         rel_path = _safe_relative_path(filename)
         if rel_path is None:
-            print(f"WARNING: include not found: {filename}")
+            logger.warning("include not found: %s", filename)
             return ""
         full_path = Path(includes_dir) / rel_path
 
         if not full_path.exists():
-            print(f"WARNING: include not found: {filename}")
+            logger.warning("include not found: %s", filename)
             return ""
 
         return full_path.read_text().rstrip("\n")
@@ -134,7 +137,7 @@ def resolve_includes(content: str, includes_dir: str | Path) -> str:
     remaining = _INCLUDE_PATTERN.findall(content)
     if remaining:
         for nested in remaining:
-            print(f"WARNING: stripping nested include: {nested}")
+            logger.warning("stripping nested include: %s", nested)
         content = _INCLUDE_PATTERN.sub("", content)
 
     return content
@@ -168,7 +171,7 @@ def resolve_glossary_definitions(content: str, glossary_dir: str | Path) -> str:
 
         glossary_file = Path(glossary_dir) / f"{term_id}.md"
         if not glossary_file.exists():
-            print(f"WARNING: glossary file not found: {term_id}.md")
+            logger.warning("glossary file not found: %s.md", term_id)
             return ""
 
         file_content = glossary_file.read_text()

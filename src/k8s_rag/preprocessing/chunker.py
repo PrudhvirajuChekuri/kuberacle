@@ -5,8 +5,11 @@ decisions: respects heading hierarchy, keeps code blocks and tables
 atomic, and attaches rich metadata to each chunk.
 """
 
+import logging
 import re
 from k8s_rag.preprocessing.structure import analyze_structure, classify_code_block, estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 
 TARGET_TOKENS = 800
@@ -372,6 +375,10 @@ def _force_split(text: str, hard_cap_tokens: int = HARD_CAP_TOKENS) -> list[str]
         where line boundaries allow it. A single line that already
         exceeds hard_cap_tokens is emitted as-is rather than truncated.
     """
+    logger.debug(
+        "Force-splitting chunk of ~%d tokens (hard_cap=%d)",
+        estimate_tokens(text), hard_cap_tokens,
+    )
     lines = text.split("\n")
     chunks = []
     current_lines = []

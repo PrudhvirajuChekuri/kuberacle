@@ -1,8 +1,11 @@
 """Local BM25 retrieval over chunk corpus."""
 
+import logging
 import re
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
@@ -27,6 +30,7 @@ class BM25Retriever:
         self.chunks = chunks
         self.top_k = top_k
         if not chunks:
+            logger.warning("BM25Retriever initialized with empty corpus")
             self._bm25 = None
             return
         self._tokenized_corpus = [
@@ -42,6 +46,7 @@ class BM25Retriever:
             for chunk in chunks
         ]
         self._bm25 = BM25Okapi(self._tokenized_corpus)
+        logger.debug("BM25Retriever initialized with %d chunks", len(chunks))
 
     def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievedChunk]:
         """Retrieve lexical matches for query."""
@@ -68,4 +73,5 @@ class BM25Retriever:
                     score=float(scores[idx]),
                 )
             )
+        logger.debug("BM25 retrieved %d chunks", len(rows))
         return rows

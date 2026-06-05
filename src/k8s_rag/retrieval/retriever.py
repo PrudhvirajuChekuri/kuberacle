@@ -1,11 +1,14 @@
 """Semantic + hybrid retrieval orchestration."""
 
+import logging
 from typing import Any
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
 from k8s_rag.retrieval.bm25 import BM25Retriever
 from k8s_rag.retrieval.hybrid import merge_hybrid_candidates
 from k8s_rag.retrieval.reranker import DiscoveryEngineReranker
+
+logger = logging.getLogger(__name__)
 
 
 class SemanticRetriever:
@@ -33,8 +36,11 @@ class SemanticRetriever:
             Ranked chunk list.
         """
         k = top_k if top_k is not None else self.top_k
+        logger.debug("SemanticRetriever: top_k=%d, query=%r", k, query[:80])
         query_embedding = self.embedder.embed_text(query)
-        return self.vector_store.query(query_embedding, k)
+        results = self.vector_store.query(query_embedding, k)
+        logger.debug("SemanticRetriever: retrieved %d chunks", len(results))
+        return results
 
 
 class HybridRetriever:
@@ -95,4 +101,10 @@ class HybridRetriever:
             lexical_weight=self.lexical_weight,
             top_k=self.merged_top_k,
         )
-        return self.reranker.rerank(query, merged, top_k=min(final_k, len(merged)))
+        logger.debug(
+            "HybridRetriever: semantic=%d, lexical=%d, merged=%d, reranking to top_%d",
+            len(semantic), len(lexical), len(merged), min(final_k, len(merged)),
+        )
+        results = self.reranker.rerank(query, merged, top_k=min(final_k, len(merged)))
+        logger.debug("HybridRetriever: final %d chunks after rerank", len(results))
+        return results

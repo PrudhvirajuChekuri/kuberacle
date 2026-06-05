@@ -87,11 +87,13 @@ def test_glossary_definition_all(tmp_path):
     assert result == "Full body here."
 
 
-def test_glossary_definition_missing_file(tmp_path, capsys):
+def test_glossary_definition_missing_file(tmp_path, caplog):
+    import logging
     content = '{{< glossary_definition term_id="missing" length="short" >}}'
-    result = resolve_glossary_definitions(content, tmp_path)
+    with caplog.at_level(logging.WARNING):
+        result = resolve_glossary_definitions(content, tmp_path)
     assert result == ""
-    assert "WARNING" in capsys.readouterr().out
+    assert any("missing" in r.message for r in caplog.records)
 
 
 # --- resolve_notes ---
@@ -167,11 +169,13 @@ def test_code_sample_source_uses_slash_comment_for_go(tmp_path):
     assert "# Source: main.go" not in result
 
 
-def test_code_sample_missing_file(tmp_path, capsys):
+def test_code_sample_missing_file(tmp_path, caplog):
+    import logging
     content = '{{% code_sample file="missing/file.yaml" %}}'
-    result = resolve_code_samples(content, tmp_path)
+    with caplog.at_level(logging.WARNING):
+        result = resolve_code_samples(content, tmp_path)
     assert result == ""
-    assert "WARNING" in capsys.readouterr().out
+    assert any("missing/file.yaml" in r.message for r in caplog.records)
 
 
 def test_code_sample_leading_slash_is_treated_as_relative(tmp_path):
@@ -207,11 +211,13 @@ def test_include_percent_syntax_inlines_content(tmp_path):
     assert result == "You need a Kubernetes cluster."
 
 
-def test_include_missing_file(tmp_path, capsys):
+def test_include_missing_file(tmp_path, caplog):
+    import logging
     content = '{{< include "missing.md" >}}'
-    result = resolve_includes(content, tmp_path)
+    with caplog.at_level(logging.WARNING):
+        result = resolve_includes(content, tmp_path)
     assert result == ""
-    assert "WARNING" in capsys.readouterr().out
+    assert any("missing.md" in r.message for r in caplog.records)
 
 
 def test_include_leading_slash_is_treated_as_relative(tmp_path):
@@ -225,16 +231,18 @@ def test_include_leading_slash_is_treated_as_relative(tmp_path):
     assert result == "Shared include text."
 
 
-def test_include_strips_nested_includes(tmp_path, capsys):
+def test_include_strips_nested_includes(tmp_path, caplog):
     """Nested include shortcodes in inlined content should be stripped."""
+    import logging
     outer = tmp_path / "outer.md"
     outer.write_text('Outer content.\n{{< include "inner.md" >}}')
 
     content = '{{< include "outer.md" >}}'
-    result = resolve_includes(content, tmp_path)
+    with caplog.at_level(logging.WARNING):
+        result = resolve_includes(content, tmp_path)
     assert "Outer content." in result
     assert "{{" not in result
-    assert "nested include" in capsys.readouterr().out.lower()
+    assert any("nested include" in r.message.lower() for r in caplog.records)
 
 
 # --- resolve_headings ---
