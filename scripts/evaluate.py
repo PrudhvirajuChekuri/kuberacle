@@ -188,7 +188,7 @@ def main() -> None:
     if args.mode == "full":
         ragas_result = run_optional_ragas_metrics(summary.case_results)
         ragas_path = md_path.parent / "latest-ragas.json"
-        ragas_path.write_text(json.dumps(ragas_result, indent=2, ensure_ascii=False))
+        ragas_path.write_text(json.dumps(ragas_result, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"RAGAS report: {ragas_path}")
         if ragas_result.get("status") != "ok":
             print(f"RAGAS status: {ragas_result.get('status')} - {ragas_result.get('reason')}")

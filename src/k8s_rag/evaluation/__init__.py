@@ -2,6 +2,7 @@
 
 from k8s_rag.evaluation.dataset import GoldenExample, load_golden_dataset
 from k8s_rag.evaluation.runner import (
+    EvaluationCaseResult,
     EvaluationSummary,
     EvaluationThresholds,
     evaluate_dataset,
@@ -9,6 +10,7 @@ from k8s_rag.evaluation.runner import (
 
 __all__ = [
     "GoldenExample",
+    "EvaluationCaseResult",
     "EvaluationSummary",
     "EvaluationThresholds",
     "evaluate_dataset",
