@@ -15,7 +15,7 @@ from k8s_rag.preprocessing.page_selection import resolve_pages, _owner_repo_from
 
 # Repository root (assumes script is run from project root)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "smoke.yaml"
+CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "full.yaml"
 DATA_DIR = PROJECT_ROOT / "data"
 
 
@@ -131,8 +131,9 @@ def save_file(content: str, path: str | Path) -> None:
 def scan_code_samples(content: str) -> list[str]:
     """Extract code_sample file references from markdown content.
 
-    Finds patterns like {{% code_sample file="pods/simple-pod.yaml" %}}
-    and returns the file paths.
+    Handles both shortcode names (code_sample and code), both delimiter
+    styles ({{< >}} and {{% %}}), and any attribute order (language= may
+    appear before file=).
 
     Args:
         content: Raw markdown string.
@@ -140,7 +141,7 @@ def scan_code_samples(content: str) -> list[str]:
     Returns:
         List of file paths referenced by code_sample shortcodes.
     """
-    return re.findall(r'code_sample\s+file="([^"]+)"', content)
+    return re.findall(r'{{[<%]\s*code(?:_sample)?\s+[^%>]*?file="([^"]+)"', content)
 
 
 def scan_includes(content: str) -> list[str]:
@@ -162,8 +163,7 @@ def scan_includes(content: str) -> list[str]:
 def scan_glossary_definitions(content: str) -> list[str]:
     """Extract term_id references from glossary_definition shortcodes.
 
-    Finds patterns like {{< glossary_definition term_id="ingress" length="all" >}}
-    and returns the term IDs.
+    Handles any attribute order (prepend= or length= may appear before term_id=).
 
     Args:
         content: Raw markdown string.
@@ -171,7 +171,7 @@ def scan_glossary_definitions(content: str) -> list[str]:
     Returns:
         List of term IDs referenced by glossary_definition shortcodes.
     """
-    return re.findall(r'glossary_definition\s+term_id="([^"]+)"', content)
+    return re.findall(r'glossary_definition\b[^>]*?term_id="([^"]+)"', content)
 
 
 def normalize_repo_relative_path(path: str, path_type: str) -> str:
@@ -355,7 +355,7 @@ def main():
         "--limit",
         type=int,
         default=None,
-        help="Optional per-section page cap (useful for smoke runs).",
+        help="Optional per-section page cap (useful for partial runs).",
     )
     parser.add_argument(
         "--allow-partial",

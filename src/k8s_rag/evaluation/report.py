@@ -11,7 +11,7 @@ def write_json_report(summary: EvaluationSummary, output_path: str | Path) -> No
     """Write full evaluation summary as JSON."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w") as file:
+    with path.open("w", encoding="utf-8") as file:
         json.dump(asdict(summary), file, indent=2, ensure_ascii=False)
 
 
@@ -41,4 +41,4 @@ def write_markdown_summary(summary: EvaluationSummary, output_path: str | Path) 
     """Write markdown summary file to disk."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(build_markdown_summary(summary))
+    path.write_text(build_markdown_summary(summary), encoding="utf-8")

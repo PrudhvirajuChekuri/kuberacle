@@ -39,15 +39,10 @@ jobs:
       - name: Run unit tests
         run: pytest -q
 
-      - name: Prepare smoke corpus
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull vector index from GCS
         run: |
-          python scripts/download_data.py --config configs/datasets/smoke.yaml
-          python scripts/preprocess.py --config configs/datasets/smoke.yaml
-
-      - name: Build vector index
-        run: python scripts/ingest.py
+          python scripts/pull_index.py \
+            --bucket ${{ secrets.GCS_INDEX_BUCKET }}
 
       - name: Run deterministic smoke evaluation gate
         run: |
@@ -118,6 +113,12 @@ jobs:
             --mode full \
             --json-out artifacts/evals/ci-full-eval-ragas.json \
             --md-out artifacts/evals/ci-full-eval-ragas.md
+
+      - name: Push vector index to GCS
+        if: success()
+        run: |
+          python scripts/push_index.py \
+            --bucket ${{ secrets.GCS_INDEX_BUCKET }}
 
       - name: Upload full evaluation artifacts
         if: always()

@@ -1,6 +1,7 @@
 """Offline evaluation runner for dataset-level metrics and gating."""
 
 from dataclasses import dataclass
+from typing import Any
 
 from k8s_rag.evaluation.dataset import GoldenExample
 from k8s_rag.evaluation.metrics import (
@@ -61,11 +62,11 @@ def _mean(values: list[float]) -> float:
     """Compute arithmetic mean; return 0 for empty input."""
     if not values:
         return 0.0
-    return sum(values) / float(len(values))
+    return sum(values) / len(values)
 
 
 def evaluate_dataset(
-    qa_system,
+    qa_system: Any,
     dataset: list[GoldenExample],
     thresholds: EvaluationThresholds,
     top_k: int | None = None,

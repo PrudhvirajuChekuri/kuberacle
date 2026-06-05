@@ -44,7 +44,7 @@ def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):
         "  temperature: 0.1\n"
         "  max_tokens: 500\n"
         "evaluation:\n"
-        "  dataset_path: evals/golden/v1.jsonl\n"
+        "  dataset_path: evals/golden/v2.jsonl\n"
         "  retrieval_recall_at_k_threshold: 0.72\n"
         "  precision_at_1_threshold: 0.75\n"
         "  abstention_accuracy_threshold: 0.91\n"
@@ -67,7 +67,7 @@ def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):
     assert config.reranker_model == "semantic-ranker-default@latest"
     assert config.prompt_version == "v1"
     assert config.max_tokens == 500
-    assert config.evaluation_dataset_path == "evals/golden/v1.jsonl"
+    assert config.evaluation_dataset_path == "evals/golden/v2.jsonl"
     assert config.eval_retrieval_recall_at_k_threshold == 0.72
     assert config.eval_precision_at_1_threshold == 0.75
     assert config.eval_abstention_accuracy_threshold == 0.91
@@ -139,4 +139,50 @@ def test_load_rag_config_raises_without_gcp_location(tmp_path, monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="GCP_LOCATION"):
+        load_rag_config(config_path)
+
+
+def test_load_rag_config_raises_on_missing_yaml_key(tmp_path, monkeypatch):
+    """Config loader should raise RuntimeError when a required YAML key is missing."""
+    monkeypatch.setenv("GCP_PROJECT", "test-project")
+    monkeypatch.setenv("GCP_LOCATION", "us-central1")
+
+    config_path = tmp_path / "rag.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  generation: gemini-2.5-flash-lite\n"
+        "vector_store:\n"
+        "  collection_name: k8s_docs_chunks_gemini\n"
+        "  persist_directory: data/vector/chroma_gemini\n"
+        "generation:\n"
+        "  temperature: 0.2\n"
+        "  max_tokens: 600\n"
+    )
+
+    with pytest.raises(RuntimeError, match="models"):
+        load_rag_config(config_path)
+
+
+def test_load_rag_config_raises_on_invalid_hybrid_weights(tmp_path, monkeypatch):
+    """Config loader should raise RuntimeError when hybrid weights do not sum to 1.0."""
+    monkeypatch.setenv("GCP_PROJECT", "test-project")
+    monkeypatch.setenv("GCP_LOCATION", "us-central1")
+
+    config_path = tmp_path / "rag.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  embedding: gemini-embedding-001\n"
+        "  generation: gemini-2.5-flash-lite\n"
+        "vector_store:\n"
+        "  collection_name: k8s_docs_chunks_gemini\n"
+        "  persist_directory: data/vector/chroma_gemini\n"
+        "retrieval:\n"
+        "  hybrid_weight_semantic: 0.6\n"
+        "  hybrid_weight_lexical: 0.6\n"
+        "generation:\n"
+        "  temperature: 0.2\n"
+        "  max_tokens: 600\n"
+    )
+
+    with pytest.raises(RuntimeError, match="sum to 1.0"):
         load_rag_config(config_path)

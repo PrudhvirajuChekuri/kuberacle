@@ -4,7 +4,15 @@ from k8s_rag.ingestion.schemas import RetrievedChunk
 
 
 def _normalize_scores(chunks: list[RetrievedChunk]) -> dict[str, float]:
-    """Min-max normalize chunk scores by chunk id."""
+    """Min-max normalize chunk scores to [0, 1] keyed by chunk_id.
+
+    Args:
+        chunks: Chunks with raw scores to normalize.
+
+    Returns:
+        Dict mapping chunk_id to normalized score. Returns empty dict for
+        empty input; maps all chunks to 1.0 when all scores are equal.
+    """
     if not chunks:
         return {}
     values = [chunk.score for chunk in chunks]
@@ -25,7 +33,22 @@ def merge_hybrid_candidates(
     lexical_weight: float,
     top_k: int,
 ) -> list[RetrievedChunk]:
-    """Merge semantic and lexical candidates with weighted scores."""
+    """Merge semantic and lexical candidates using weighted score fusion.
+
+    Normalizes each list independently to [0, 1], then combines scores as
+    ``semantic_weight * semantic_score + lexical_weight * lexical_score``.
+    Chunks found by only one retriever receive 0.0 from the other side.
+
+    Args:
+        semantic_chunks: Results from vector similarity search.
+        lexical_chunks: Results from BM25 lexical search.
+        semantic_weight: Weight applied to normalized semantic scores.
+        lexical_weight: Weight applied to normalized lexical scores.
+        top_k: Maximum number of merged candidates to return.
+
+    Returns:
+        Deduplicated chunks sorted by descending hybrid score, capped at top_k.
+    """
     semantic_norm = _normalize_scores(semantic_chunks)
     lexical_norm = _normalize_scores(lexical_chunks)
 

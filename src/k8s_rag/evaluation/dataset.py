@@ -26,23 +26,23 @@ class GoldenExample:
     tags: list[str]
 
 
-def _require_type(value, expected_type, field_name: str, line_number: int) -> None:
+def _require_type(value, expected_type: type, field_name: str, line_number: int) -> None:
     """Validate field type and raise a readable error on mismatch."""
     if not isinstance(value, expected_type):
-        expected_name = (
-            expected_type.__name__
-            if isinstance(expected_type, type)
-            else "/".join(t.__name__ for t in expected_type)
-        )
         raise ValueError(
             f"Invalid field type at line {line_number}: "
-            f"{field_name!r} must be {expected_name}."
+            f"{field_name!r} must be {expected_type.__name__}."
         )
 
 
 def _parse_example(line: str, line_number: int) -> GoldenExample:
     """Parse and validate one JSONL example row."""
-    payload = json.loads(line)
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid JSON at line {line_number}: {exc}"
+        ) from exc
     required_fields = {
         "id",
         "question",
@@ -113,7 +113,7 @@ def load_golden_dataset(dataset_path: str | Path) -> list[GoldenExample]:
     rows: list[GoldenExample] = []
     seen_ids: set[str] = set()
 
-    with path.open("r") as file:
+    with path.open("r", encoding="utf-8") as file:
         for line_number, line in enumerate(file, start=1):
             stripped = line.strip()
             if not stripped:

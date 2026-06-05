@@ -44,6 +44,19 @@ class VertexAIEmbedder:
             )
         return self._client
 
+    def _embed(self, contents: str | list[str], task_type: str) -> list[list[float]]:
+        from google.genai import types
+
+        response = self.client.models.embed_content(
+            model=self.model_id,
+            contents=contents,
+            config=types.EmbedContentConfig(
+                task_type=task_type,
+                output_dimensionality=self.output_dimensionality,
+            ),
+        )
+        return [embedding.values for embedding in response.embeddings]
+
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         """Embed a list of texts for document ingestion.
 
@@ -55,17 +68,12 @@ class VertexAIEmbedder:
         Returns:
             List of embedding vectors aligned to input order.
         """
-        from google.genai import types
-
-        response = self.client.models.embed_content(
-            model=self.model_id,
-            contents=texts,
-            config=types.EmbedContentConfig(
-                task_type="RETRIEVAL_DOCUMENT",
-                output_dimensionality=self.output_dimensionality,
-            ),
-        )
-        return [embedding.values for embedding in response.embeddings]
+        embeddings = self._embed(texts, "RETRIEVAL_DOCUMENT")
+        if len(embeddings) != len(texts):
+            raise RuntimeError(
+                f"API returned {len(embeddings)} embeddings for {len(texts)} inputs."
+            )
+        return embeddings
 
     def embed_text(self, text: str) -> list[float]:
         """Embed a single query string for retrieval.
@@ -78,14 +86,7 @@ class VertexAIEmbedder:
         Returns:
             Embedding vector.
         """
-        from google.genai import types
-
-        response = self.client.models.embed_content(
-            model=self.model_id,
-            contents=text,
-            config=types.EmbedContentConfig(
-                task_type="RETRIEVAL_QUERY",
-                output_dimensionality=self.output_dimensionality,
-            ),
-        )
-        return response.embeddings[0].values
+        embeddings = self._embed(text, "RETRIEVAL_QUERY")
+        if not embeddings:
+            raise RuntimeError("API returned no embeddings for query.")
+        return embeddings[0]

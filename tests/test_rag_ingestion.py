@@ -52,7 +52,7 @@ def test_ingestion_pipeline_loads_and_upserts(tmp_path):
     pipeline = IngestionPipeline(embedder=FakeEmbedder(), vector_store=store, batch_size=1)
     stats = pipeline.run(jsonl)
 
-    assert stats["ingested_chunks"] == 2
+    assert stats["upserted_chunks"] == 2
     assert len(collection.upserts) == 2
 
 
@@ -119,3 +119,69 @@ def test_vector_store_normalizes_empty_and_nested_metadata(tmp_path):
     assert metadatas[0]["code_types"] == ""
     assert isinstance(metadatas[0]["api_metadata"], str)
     assert metadatas[0]["extra"] == ""
+
+
+def test_load_chunks_excludes_chunk_id_from_metadata(tmp_path):
+    """chunk_id should not appear in metadata after loading."""
+    jsonl = tmp_path / "chunks.jsonl"
+    jsonl.write_text(
+        json.dumps({"chunk_id": "a::1", "content": "hello", "source_url": "https://x/a"}) + "\n"
+    )
+    pipeline = IngestionPipeline(embedder=FakeEmbedder(), vector_store=None)
+    chunks = pipeline.load_chunks(jsonl)
+
+    assert chunks[0].chunk_id == "a::1"
+    assert "chunk_id" not in chunks[0].metadata
+    assert "content" not in chunks[0].metadata
+    assert chunks[0].metadata["source_url"] == "https://x/a"
+
+
+def test_load_chunks_raises_on_missing_field(tmp_path):
+    """load_chunks should raise ValueError with line number on malformed row."""
+    import pytest
+
+    jsonl = tmp_path / "chunks.jsonl"
+    jsonl.write_text(json.dumps({"content": "hello", "source_url": "https://x/a"}) + "\n")
+    pipeline = IngestionPipeline(embedder=FakeEmbedder(), vector_store=None)
+
+    with pytest.raises(ValueError, match=r"chunks\.jsonl:1"):
+        pipeline.load_chunks(jsonl)
+
+
+def test_vector_store_query_guards_none_metadata(tmp_path):
+    """query() should return empty dict when Chroma returns None metadata."""
+    collection = FakeCollection()
+    collection.query_response = {
+        "ids": [["a"]],
+        "documents": [["chunk A"]],
+        "metadatas": [[None]],
+        "distances": [[0.25]],
+    }
+    store = ChromaVectorStore(
+        collection_name="test",
+        persist_directory=str(tmp_path / "vec"),
+        collection=collection,
+    )
+    results = store.query([0.1, 0.2], top_k=1)
+    assert results[0].metadata == {}
+
+
+def test_vector_store_fetch_all_chunks(tmp_path):
+    """fetch_all_chunks should return all stored chunks with score 0.0."""
+    collection = FakeCollection()
+    collection.get = lambda include: {
+        "ids": ["a", "b"],
+        "documents": ["doc a", "doc b"],
+        "metadatas": [{"source_url": "https://x/a"}, None],
+    }
+    store = ChromaVectorStore(
+        collection_name="test",
+        persist_directory=str(tmp_path / "vec"),
+        collection=collection,
+    )
+    results = store.fetch_all_chunks()
+
+    assert len(results) == 2
+    assert results[0].chunk_id == "a"
+    assert results[0].score == 0.0
+    assert results[1].metadata == {}
