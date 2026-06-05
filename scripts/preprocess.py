@@ -10,7 +10,7 @@ from k8s_rag.preprocessing.page_selection import resolve_pages
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "smoke.yaml"
+CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "full.yaml"
 DATA_DIR = PROJECT_ROOT / "data"
 OUTPUT_PATH = DATA_DIR / "processed" / "chunks.jsonl"
 K8S_VERSION_FILE = DATA_DIR / "k8s_version.txt"
@@ -40,7 +40,7 @@ def main():
         "--limit",
         type=int,
         default=None,
-        help="Optional per-section page cap (useful for smoke runs).",
+        help="Optional per-section page cap (useful for partial runs).",
     )
     parser.add_argument(
         "--output",

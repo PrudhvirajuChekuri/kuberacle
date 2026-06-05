@@ -28,9 +28,8 @@ Raw markdown from the [`kubernetes/website`](https://github.com/kubernetes/websi
 - **Tasks** — Step-by-step operational guides (debugging, configuration, networking)
 - **Tutorials** — End-to-end walkthroughs (deploying applications, stateful workloads)
 
-Two dataset modes are supported:
-- **Smoke** (`configs/datasets/smoke.yaml`) for fast PR checks
-- **Full** (`configs/datasets/full.yaml`) for manual full-corpus runs
+One dataset config is used for all runs:
+- **Full** (`configs/datasets/full.yaml`) — the full corpus used for ingestion and evaluation
 
 ## Stack
 
@@ -75,10 +74,10 @@ GCP_LOCATION=us-central1
 ## Run RAG Pipeline
 
 1. Ensure preprocessing output exists:
-   - Smoke corpus: `python scripts/download_data.py --config configs/datasets/smoke.yaml`
-   - Smoke preprocess: `python scripts/preprocess.py --config configs/datasets/smoke.yaml`
-   - Full corpus: `python scripts/download_data.py --config configs/datasets/full.yaml`
-   - Full preprocess: `python scripts/preprocess.py --config configs/datasets/full.yaml`
+   ```bash
+   python scripts/download_data.py
+   python scripts/preprocess.py
+   ```
 
 2. Ingest chunks into ChromaDB:
    ```bash
@@ -92,11 +91,11 @@ GCP_LOCATION=us-central1
 
 4. Run offline evaluation:
    ```bash
-   # Smoke eval (12 cases)
+   # Smoke eval (fast CI gate)
    python scripts/evaluate.py --dataset evals/golden/smoke.jsonl
 
    # Full benchmark
-   python scripts/evaluate.py --dataset evals/golden/v1.jsonl
+   python scripts/evaluate.py --dataset evals/golden/v2.jsonl
    ```
 
 The query script prints the grounded answer and a citation list with `source_url` and `chunk_id`.
