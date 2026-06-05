@@ -1,6 +1,7 @@
 """Question-answer orchestration with citations."""
 
 from dataclasses import dataclass
+from typing import Any
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
 from k8s_rag.retrieval.generator import extract_citation_indices
@@ -29,8 +30,8 @@ class RAGQASystem:
 
     def __init__(
         self,
-        retriever,
-        generator,
+        retriever: Any,
+        generator: Any,
         min_evidence_score: float = 0.0,
         min_supporting_chunks: int = 1,
         strict_used_only: bool = True,
@@ -96,10 +97,10 @@ class RAGQASystem:
         citations = [
             Citation(
                 chunk_id=chunk.chunk_id,
-                source_url=str(chunk.metadata.get("source_url", "")),
+                source_url=str(chunk.metadata.get("source_url", "unknown")),
                 score=chunk.score,
             )
-            for chunk in selected_chunks
+            for chunk in supporting
         ]
 
         return QAResult(

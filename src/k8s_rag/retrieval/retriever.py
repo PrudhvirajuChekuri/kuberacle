@@ -1,5 +1,7 @@
 """Semantic + hybrid retrieval orchestration."""
 
+from typing import Any
+
 from k8s_rag.ingestion.schemas import RetrievedChunk
 from k8s_rag.retrieval.bm25 import BM25Retriever
 from k8s_rag.retrieval.hybrid import merge_hybrid_candidates
@@ -15,7 +17,7 @@ class SemanticRetriever:
         top_k: Default retrieval depth.
     """
 
-    def __init__(self, embedder, vector_store, top_k: int = 5) -> None:
+    def __init__(self, embedder: Any, vector_store: Any, top_k: int = 5) -> None:
         self.embedder = embedder
         self.vector_store = vector_store
         self.top_k = top_k
@@ -36,7 +38,19 @@ class SemanticRetriever:
 
 
 class HybridRetriever:
-    """Hybrid retrieval pipeline (semantic + BM25 + rerank)."""
+    """Hybrid retrieval pipeline (semantic + BM25 + rerank).
+
+    Args:
+        semantic_retriever: Vector similarity retriever.
+        bm25_retriever: BM25 lexical retriever.
+        reranker: Reranker that re-scores merged candidates.
+        semantic_top_k: Candidate depth for semantic search.
+        lexical_top_k: Candidate depth for BM25 search.
+        merged_top_k: Pool size after hybrid fusion, before rerank.
+        final_top_k: Default number of results after rerank.
+        semantic_weight: Score weight for semantic candidates.
+        lexical_weight: Score weight for lexical candidates.
+    """
 
     def __init__(
         self,
@@ -61,7 +75,16 @@ class HybridRetriever:
         self.lexical_weight = lexical_weight
 
     def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievedChunk]:
-        """Retrieve hybrid candidates and rerank final output."""
+        """Retrieve hybrid candidates and rerank final output.
+
+        Args:
+            query: User search question.
+            top_k: Optional override for final rerank depth. Capped at the
+                number of merged candidates when larger than ``merged_top_k``.
+
+        Returns:
+            Reranked chunk list.
+        """
         final_k = top_k if top_k is not None else self.final_top_k
         semantic = self.semantic_retriever.retrieve(query, top_k=self.semantic_top_k)
         lexical = self.bm25_retriever.retrieve(query, top_k=self.lexical_top_k)
@@ -72,4 +95,4 @@ class HybridRetriever:
             lexical_weight=self.lexical_weight,
             top_k=self.merged_top_k,
         )
-        return self.reranker.rerank(query, merged, top_k=final_k)
+        return self.reranker.rerank(query, merged, top_k=min(final_k, len(merged)))
