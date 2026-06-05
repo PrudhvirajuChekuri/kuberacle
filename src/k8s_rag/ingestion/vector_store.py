@@ -1,6 +1,7 @@
 """Vector store adapters used by ingestion and retrieval."""
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,18 @@ class ChromaVectorStore:
             )
         return self._collection
 
+    def reset_collection(self) -> None:
+        """Drop and recreate the collection for a clean ingest."""
+        import chromadb
+
+        Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
+        client = chromadb.PersistentClient(path=self.persist_directory)
+        try:
+            client.delete_collection(self.collection_name)
+        except Exception:
+            pass
+        self._collection = client.create_collection(name=self.collection_name)
+
     def upsert_chunks(
         self,
         chunks: list[ChunkRecord],
@@ -60,7 +73,7 @@ class ChromaVectorStore:
             embeddings=embeddings,
         )
 
-    def _normalize_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:
+    def _normalize_metadata(self, metadata: Mapping[str, Any]) -> dict[str, Any]:
         """Convert metadata into Chroma-compatible primitive fields.
 
         Chroma supports scalar primitives and non-empty primitive lists.
@@ -130,7 +143,7 @@ class ChromaVectorStore:
                 RetrievedChunk(
                     chunk_id=chunk_id,
                     content=content,
-                    metadata=metadata,
+                    metadata=metadata or {},
                     score=1.0 / (1.0 + float(distance)),
                 )
             )

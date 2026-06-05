@@ -36,12 +36,19 @@ class IngestionPipeline:
             Parsed chunk list.
         """
         chunks: list[ChunkRecord] = []
-        with open(jsonl_path, "r") as file:
-            for line in file:
+        with open(jsonl_path, "r", encoding="utf-8") as file:
+            for lineno, line in enumerate(file, start=1):
                 row = json.loads(line)
-                chunk_id = row["chunk_id"]
-                content = row["content"]
-                metadata = {k: v for k, v in row.items() if k != "content"}
+                try:
+                    chunk_id = row["chunk_id"]
+                    content = row["content"]
+                except KeyError as exc:
+                    raise ValueError(
+                        f"{jsonl_path}:{lineno}: missing required field {exc}"
+                    ) from exc
+                metadata = {
+                    k: v for k, v in row.items() if k not in {"chunk_id", "content"}
+                }
                 chunks.append(
                     ChunkRecord(
                         chunk_id=chunk_id,
@@ -61,12 +68,13 @@ class IngestionPipeline:
             Ingestion summary stats.
         """
         chunks = self.load_chunks(jsonl_path)
-        total = len(chunks)
+        upserted = 0
 
-        for start in range(0, total, self.batch_size):
+        for start in range(0, len(chunks), self.batch_size):
             batch = chunks[start:start + self.batch_size]
             texts = [chunk.content for chunk in batch]
             embeddings = self.embedder.embed_texts(texts)
             self.vector_store.upsert_chunks(batch, embeddings)
+            upserted += len(batch)
 
-        return {"ingested_chunks": total}
+        return {"upserted_chunks": upserted}
