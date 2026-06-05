@@ -21,7 +21,6 @@ retrieval:
 
 reranker:
   enabled: true
-  top_k: 5
   ranking_config: "default_ranking_config"
   model: "semantic-ranker-default@latest"
 
@@ -38,7 +37,7 @@ generation:
   max_tokens: 600
 
 evaluation:
-  dataset_path: "evals/golden/v1.jsonl"
+  dataset_path: "evals/golden/v2.jsonl"
   retrieval_recall_at_k_threshold: 0.75
   precision_at_1_threshold: 0.65
   abstention_accuracy_threshold: 0.90
