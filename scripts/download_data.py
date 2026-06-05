@@ -1,6 +1,7 @@
 """Download Kubernetes documentation files from the official GitHub repository."""
 
 import argparse
+import logging
 import re
 import time
 import tomllib
@@ -15,6 +16,8 @@ from k8s_rag.preprocessing.page_selection import resolve_pages, _owner_repo_from
 
 # Repository root (assumes script is run from project root)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+logger = logging.getLogger(__name__)
 CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "full.yaml"
 DATA_DIR = PROJECT_ROOT / "data"
 
@@ -68,18 +71,18 @@ def fetch_file(url: str, quiet: bool = False) -> str | None:
             with urlopen(request, timeout=15) as response:
                 return response.read().decode("utf-8")
         except HTTPError as e:
-            if not quiet:
-                print(f"  HTTP {e.code}: {url}")
+            log = logger.debug if quiet else logger.warning
+            log("HTTP %d: %s", e.code, url)
             return None
         except URLError as e:
             if attempt == retries:
-                if not quiet:
-                    print(f"  Network error: {e.reason} — {url}")
+                log = logger.debug if quiet else logger.warning
+                log("Network error: %s — %s", e.reason, url)
                 return None
             sleep_seconds = 2 ** (attempt - 1)
-            print(
-                f"  Fetch attempt {attempt}/{retries} failed ({e.reason}); "
-                f"retrying in {sleep_seconds}s..."
+            logger.warning(
+                "Fetch attempt %d/%d failed (%s); retrying in %ds",
+                attempt, retries, e.reason, sleep_seconds,
             )
             time.sleep(sleep_seconds)
     return None
@@ -229,7 +232,7 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
             local_path = DATA_DIR / "raw" / section / page
             url = build_raw_url(repo_url, branch, remote_path)
 
-            print(f"Fetching {section}/{page}")
+            logger.info("Fetching %s/%s", section, page)
             content = fetch_file(url)
 
             if content is None:
@@ -251,14 +254,14 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
         try:
             normalized_example = normalize_repo_relative_path(example_file, "example")
         except ValueError as exc:
-            print(f"  Invalid example reference: {exc}")
+            logger.warning("Invalid example reference: %s", exc)
             counts["failed"] += 1
             continue
         remote_path = f"{examples_path}/{normalized_example}"
         local_path = DATA_DIR / "examples" / normalized_example
         url = build_raw_url(repo_url, branch, remote_path)
 
-        print(f"Fetching example: {normalized_example}")
+        logger.info("Fetching example: %s", normalized_example)
         content = fetch_file(url)
 
         if content is None:
@@ -273,7 +276,7 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
         try:
             normalized_include = normalize_repo_relative_path(include_file, "include")
         except ValueError as exc:
-            print(f"  Invalid include reference: {exc}")
+            logger.warning("Invalid include reference: %s", exc)
             counts["failed"] += 1
             continue
         source_dirs = sorted(referenced_includes.get(include_file, set()))
@@ -288,7 +291,7 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
 
         local_path = DATA_DIR / "includes" / normalized_include
         fetched_content = None
-        print(f"Fetching include: {normalized_include}")
+        logger.info("Fetching include: %s", normalized_include)
         for remote_path in candidate_remote_paths:
             url = build_raw_url(repo_url, branch, remote_path)
             fetched_content = fetch_file(url, quiet=True)
@@ -296,7 +299,7 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
                 break
 
         if fetched_content is None:
-            print(f"  Not found at any candidate path: {normalized_include}")
+            logger.warning("Not found at any candidate path: %s", normalized_include)
             counts["failed"] += 1
             continue
 
@@ -311,14 +314,14 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
                     f"{term_id}.md", "glossary term"
                 )
             except ValueError as exc:
-                print(f"  Invalid glossary term reference: {exc}")
+                logger.warning("Invalid glossary term reference: %s", exc)
                 counts["failed"] += 1
                 continue
             remote_path = f"{glossary_path}/{normalized_term}"
             local_path = DATA_DIR / "glossary" / normalized_term
             url = build_raw_url(repo_url, branch, remote_path)
 
-            print(f"Fetching glossary term: {term_id}")
+            logger.info("Fetching glossary term: %s", term_id)
             content = fetch_file(url)
 
             if content is None:
@@ -331,7 +334,7 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
     return counts
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Download selected Kubernetes docs pages and dependencies."
     )
@@ -364,14 +367,20 @@ def main():
     )
     args = parser.parse_args()
 
-    config_path = Path(args.config)
-    print(f"Loading config from {config_path}")
-    config = load_config(config_path)
-    print(f"Source: {config['source_repo']} ({config['source_branch']})")
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
 
-    print("Fetching k8s version from source repo...")
+    config_path = Path(args.config)
+    logger.info("Loading config from %s", config_path)
+    config = load_config(config_path)
+    logger.info("Source: %s (%s)", config["source_repo"], config["source_branch"])
+
+    logger.info("Fetching k8s version from source repo...")
     k8s_version = fetch_k8s_version(config)
-    print(f"K8s version: {k8s_version}")
+    logger.info("K8s version: %s", k8s_version)
     save_file(k8s_version, DATA_DIR / "k8s_version.txt")
 
     sections = args.sections.split(",") if args.sections else None
@@ -382,14 +391,14 @@ def main():
         limit_override=args.limit,
     )
     total_pages = sum(len(values) for values in page_map.values())
-    print(f"Resolved pages: {total_pages}\n")
+    logger.info("Resolved pages: %d", total_pages)
 
     counts = download_pages(config, page_map)
 
-    print(
-        f"\nDone: {counts['pages']} pages, {counts['examples']} examples, "
-        f"{counts['includes']} includes, {counts['glossary']} glossary terms, "
-        f"{counts['failed']} failed"
+    logger.info(
+        "Done: %d pages, %d examples, %d includes, %d glossary terms, %d failed",
+        counts["pages"], counts["examples"], counts["includes"],
+        counts["glossary"], counts["failed"],
     )
     if counts["failed"] > 0 and not args.allow_partial:
         raise SystemExit(1)

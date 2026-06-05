@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import logging
 import tarfile
 import tempfile
 from datetime import datetime, timezone
@@ -32,6 +33,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
+    logger = logging.getLogger(__name__)
+
     args = parse_args()
     config = load_rag_config(CONFIG_PATH)
     index_path = PROJECT_ROOT / config.persist_directory
@@ -57,24 +65,24 @@ def main() -> None:
 
     tmp_path = Path(tempfile.mktemp(suffix=".tar.gz"))
     try:
-        print(f"Archiving {index_path} ...")
+        logger.info("Archiving %s", index_path)
         with tarfile.open(tmp_path, "w:gz") as tar:
             tar.add(index_path, arcname=index_path.name)
 
         client = storage.Client()
         bucket = client.bucket(args.bucket)
 
-        print(f"Uploading to gs://{args.bucket}/{args.object} ...")
+        logger.info("Uploading to gs://%s/%s", args.bucket, args.object)
         blob = bucket.blob(args.object)
         blob.upload_from_filename(str(tmp_path))
 
-        print(f"Uploading manifest to gs://{args.bucket}/{MANIFEST_OBJECT} ...")
+        logger.info("Uploading manifest to gs://%s/%s", args.bucket, MANIFEST_OBJECT)
         manifest_blob = bucket.blob(MANIFEST_OBJECT)
         manifest_blob.upload_from_string(
             json.dumps(manifest, indent=2), content_type="application/json"
         )
 
-        print("Done.")
+        logger.info("Done")
     finally:
         tmp_path.unlink(missing_ok=True)
 

@@ -1,6 +1,7 @@
 """Run the preprocessing pipeline on selected K8s documentation pages."""
 
 import argparse
+import logging
 from pathlib import Path
 
 import yaml
@@ -16,7 +17,7 @@ OUTPUT_PATH = DATA_DIR / "processed" / "chunks.jsonl"
 K8S_VERSION_FILE = DATA_DIR / "k8s_version.txt"
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Preprocess selected Kubernetes docs into retrieval chunks."
     )
@@ -54,8 +55,15 @@ def main():
     )
     args = parser.parse_args()
 
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
+    logger = logging.getLogger(__name__)
+
     config_path = Path(args.config)
-    print(f"Loading config from {config_path}")
+    logger.info("Loading config from %s", config_path)
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
@@ -80,9 +88,9 @@ def main():
         "pages": page_map,
     }
 
-    print(f"K8s version: {config['k8s_version']}")
+    logger.info("K8s version: %s", config["k8s_version"])
     page_count = sum(len(pages) for pages in config["pages"].values())
-    print(f"Pages to process: {page_count}\n")
+    logger.info("Pages to process: %d", page_count)
 
     chunks, stats = run_pipeline(config, DATA_DIR)
 
@@ -92,17 +100,19 @@ def main():
     unhandled = stats["unhandled_shortcodes"]
     total_unhandled = sum(unhandled.values())
 
-    print(f"\n{'=' * 50}")
-    print(f"Pages processed: {stats['total_pages']}")
-    print(f"Failed pages:    {stats['failed_pages']}")
-    print(f"Total chunks:    {stats['total_chunks']}")
-    print(f"Token range:     {stats['min_tokens']} - {stats['max_tokens']}")
-    print(f"Avg tokens:      {stats['avg_tokens']}")
-    print(f"Unhandled:       {len(unhandled)} unique shortcodes ({total_unhandled} total appearances)")
-    if unhandled:
-        for name, count in unhandled.items():
-            print(f"                 - {name} ({count})")
-    print(f"Output:          {output_path}")
+    logger.info("=" * 50)
+    logger.info("Pages processed: %d", stats["total_pages"])
+    logger.info("Failed pages:    %d", stats["failed_pages"])
+    logger.info("Total chunks:    %d", stats["total_chunks"])
+    logger.info("Token range:     %d - %d", stats["min_tokens"], stats["max_tokens"])
+    logger.info("Avg tokens:      %d", stats["avg_tokens"])
+    logger.info(
+        "Unhandled:       %d unique shortcodes (%d total appearances)",
+        len(unhandled), total_unhandled,
+    )
+    for name, count in unhandled.items():
+        logger.info("                 - %s (%d)", name, count)
+    logger.info("Output:          %s", output_path)
     if stats["failed_pages"] > 0 and not args.allow_partial:
         raise SystemExit(1)
 

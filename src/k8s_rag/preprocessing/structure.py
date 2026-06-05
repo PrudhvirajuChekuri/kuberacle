@@ -5,7 +5,10 @@ tables, and section boundaries with token estimates. The chunker uses
 this map to determine safe split points and atomic regions.
 """
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 # A GFM table separator row: optional leading/trailing pipes, two or
@@ -182,9 +185,9 @@ def analyze_structure(content: str) -> dict:
 
     # Handle unclosed code block at end of document
     if in_code_block:
-        print(
-            f"WARNING: unclosed code fence starting at line {code_start}, "
-            "recording block to end of document"
+        logger.warning(
+            "Unclosed code fence starting at line %d, recording block to end of document",
+            code_start,
         )
         code_content = "\n".join(code_content_lines)
         code_type = classify_code_block(code_language, code_content)

@@ -1,6 +1,9 @@
 """Embedding adapter for ingestion and retrieval using Vertex AI."""
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class VertexAIEmbedder:
@@ -68,6 +71,7 @@ class VertexAIEmbedder:
         Returns:
             List of embedding vectors aligned to input order.
         """
+        logger.debug("Embedding %d texts (RETRIEVAL_DOCUMENT)", len(texts))
         embeddings = self._embed(texts, "RETRIEVAL_DOCUMENT")
         if len(embeddings) != len(texts):
             raise RuntimeError(
@@ -86,6 +90,7 @@ class VertexAIEmbedder:
         Returns:
             Embedding vector.
         """
+        logger.debug("Embedding query text (RETRIEVAL_QUERY)")
         embeddings = self._embed(text, "RETRIEVAL_QUERY")
         if not embeddings:
             raise RuntimeError("API returned no embeddings for query.")

@@ -90,18 +90,18 @@ def test_resolve_pages_discover_mode_uses_repo_tree(monkeypatch):
 
 # --- resolve_pages warnings ---
 
-def test_resolve_pages_warns_on_missing_section(capsys):
+def test_resolve_pages_warns_on_missing_section(caplog):
     """A typo in --sections should produce a visible warning."""
+    import logging
     config = {
         "pages": {
             "concepts": ["a.md"],
             "tasks": ["b.md"],
         }
     }
-    resolved = resolve_pages(
-        config=config, mode="list", sections_override=["concepts", "typo"],
-    )
+    with caplog.at_level(logging.WARNING):
+        resolved = resolve_pages(
+            config=config, mode="list", sections_override=["concepts", "typo"],
+        )
     assert resolved["typo"] == []
-    captured = capsys.readouterr()
-    assert "typo" in captured.out
-    assert "WARNING" in captured.out
+    assert any("typo" in r.message for r in caplog.records)

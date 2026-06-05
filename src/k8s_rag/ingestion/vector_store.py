@@ -1,11 +1,14 @@
 """Vector store adapters used by ingestion and retrieval."""
 
 import json
+import logging
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from k8s_rag.ingestion.schemas import ChunkRecord, RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 
 class ChromaVectorStore:
@@ -44,13 +47,15 @@ class ChromaVectorStore:
         """Drop and recreate the collection for a clean ingest."""
         import chromadb
 
+        logger.info("Resetting collection %r", self.collection_name)
         Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
         client = chromadb.PersistentClient(path=self.persist_directory)
         try:
             client.delete_collection(self.collection_name)
         except Exception:
-            pass
+            logger.debug("Collection %r did not exist, creating fresh", self.collection_name)
         self._collection = client.create_collection(name=self.collection_name)
+        logger.info("Collection %r ready", self.collection_name)
 
     def upsert_chunks(
         self,
@@ -63,6 +68,7 @@ class ChromaVectorStore:
             chunks: Chunk records to store.
             embeddings: Embedding list aligned to chunks.
         """
+        logger.debug("Upserting %d chunks into collection %r", len(chunks), self.collection_name)
         ids = [chunk.chunk_id for chunk in chunks]
         documents = [chunk.content for chunk in chunks]
         metadatas = [self._normalize_metadata(chunk.metadata) for chunk in chunks]
@@ -126,6 +132,7 @@ class ChromaVectorStore:
         Returns:
             Ordered list of retrieved chunks.
         """
+        logger.debug("Querying collection %r top_k=%d", self.collection_name, top_k)
         result = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k,
@@ -155,6 +162,7 @@ class ChromaVectorStore:
         Returns:
             List of chunk records with score set to 0.0.
         """
+        logger.debug("Fetching all chunks from collection %r", self.collection_name)
         result = self.collection.get(
             include=["documents", "metadatas"],
         )
@@ -171,4 +179,5 @@ class ChromaVectorStore:
                     score=0.0,
                 )
             )
+        logger.debug("Fetched %d chunks from collection %r", len(rows), self.collection_name)
         return rows

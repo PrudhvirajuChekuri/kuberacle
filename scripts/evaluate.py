@@ -6,6 +6,7 @@ Usage:
 
 import argparse
 import json
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -147,6 +148,13 @@ def determine_exit_code(pass_gate: bool) -> int:
 
 def main() -> None:
     """Execute offline evaluation and write artifacts."""
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
+    logger = logging.getLogger(__name__)
+
     args = parse_args()
     config = load_rag_config(CONFIG_PATH)
 
@@ -182,16 +190,16 @@ def main() -> None:
     write_markdown_summary(summary, md_path)
 
     print(build_markdown_summary(summary))
-    print(f"JSON report: {json_path}")
-    print(f"Markdown report: {md_path}")
+    logger.info("JSON report: %s", json_path)
+    logger.info("Markdown report: %s", md_path)
 
     if args.mode == "full":
         ragas_result = run_optional_ragas_metrics(summary.case_results)
         ragas_path = md_path.parent / "latest-ragas.json"
         ragas_path.write_text(json.dumps(ragas_result, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"RAGAS report: {ragas_path}")
+        logger.info("RAGAS report: %s", ragas_path)
         if ragas_result.get("status") != "ok":
-            print(f"RAGAS status: {ragas_result.get('status')} - {ragas_result.get('reason')}")
+            logger.warning("RAGAS status: %s — %s", ragas_result.get("status"), ragas_result.get("reason"))
 
     raise SystemExit(determine_exit_code(summary.pass_gate))
 

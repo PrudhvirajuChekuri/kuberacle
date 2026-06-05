@@ -1,11 +1,14 @@
 """Resolve page selection from static lists or repository discovery."""
 
 import json
+import logging
 import os
 import ssl
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+logger = logging.getLogger(__name__)
 
 
 def _owner_repo_from_url(repo_url: str) -> str:
@@ -60,9 +63,9 @@ def _fetch_repo_tree(repo_url: str, branch: str) -> list[dict]:
                     f"Failed to fetch repo tree after {retries} attempts ({exc}) from {url}"
                 ) from exc
             sleep_seconds = 2 ** (attempt - 1)
-            print(
-                f"GitHub tree fetch attempt {attempt}/{retries} failed ({exc}); "
-                f"retrying in {sleep_seconds}s..."
+            logger.warning(
+                "GitHub tree fetch attempt %d/%d failed (%s); retrying in %ds",
+                attempt, retries, exc, sleep_seconds,
             )
             time.sleep(sleep_seconds)
 
@@ -132,10 +135,7 @@ def resolve_pages(
         if sections_override:
             for section in sections_override:
                 if section not in pages:
-                    print(
-                        f"WARNING: requested section {section!r} not found "
-                        "in config pages"
-                    )
+                    logger.warning("Requested section %r not found in config pages", section)
             return {
                 section: list(pages.get(section, []))
                 for section in sections_override

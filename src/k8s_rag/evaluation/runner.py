@@ -1,7 +1,10 @@
 """Offline evaluation runner for dataset-level metrics and gating."""
 
+import logging
 from dataclasses import dataclass
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from k8s_rag.evaluation.dataset import GoldenExample
 from k8s_rag.evaluation.metrics import (
@@ -89,8 +92,10 @@ def evaluate_dataset(
     p1_scores: list[float] = []
     abstention_hits: list[float] = []
     non_empty_hits: list[float] = []
+    total = len(dataset)
 
-    for row in dataset:
+    for i, row in enumerate(dataset, start=1):
+        logger.info("Evaluating case %d/%d: %s", i, total, row.case_id)
         result = qa_system.ask(row.question, top_k=top_k)
         retrieved_chunk_ids = [chunk.chunk_id for chunk in result.retrieved_chunks]
         retrieved_contexts = [chunk.content for chunk in result.retrieved_chunks]

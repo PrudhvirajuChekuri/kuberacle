@@ -1,9 +1,12 @@
 """Answer generation on top of retrieved chunks."""
 
+import logging
 import re
 from typing import Any
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 
 _CITATION_INDEX = re.compile(r"\[(\d+)\]")
@@ -76,6 +79,7 @@ class VertexAIAnswerGenerator:
         Returns:
             Generated answer text.
         """
+        logger.debug("Generating answer from %d context chunks", len(chunks))
         context = _build_context(chunks)
         citation_rules = self.prompt_bundle.get("citation_rules", "")
         system_prompt = self.prompt_bundle.get(
@@ -120,6 +124,7 @@ class VertexAIAnswerGenerator:
         )
         text = response.text
         if not text:
+            logger.warning("Generator returned empty response from model %r", self.model_id)
             return "INSUFFICIENT_EVIDENCE."
         return text.strip()
 
