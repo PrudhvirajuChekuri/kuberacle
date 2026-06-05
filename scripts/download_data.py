@@ -10,6 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import yaml
+from tqdm import tqdm
 
 from k8s_rag.preprocessing.page_selection import resolve_pages, _owner_repo_from_url
 
@@ -226,13 +227,17 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
     counts = {"pages": 0, "examples": 0, "includes": 0, "glossary": 0, "failed": 0}
 
     # Download doc pages
-    for section, pages in page_map.items():
-        for page in pages:
+    all_pages = [
+        (section, page)
+        for section, pages in page_map.items()
+        for page in pages
+    ]
+    with tqdm(all_pages, desc="Downloading pages", unit="page") as progress:
+        for section, page in progress:
             remote_path = f"{docs_path}/{section}/{page}"
             local_path = DATA_DIR / "raw" / section / page
             url = build_raw_url(repo_url, branch, remote_path)
 
-            logger.info("Fetching %s/%s", section, page)
             content = fetch_file(url)
 
             if content is None:
@@ -250,6 +255,7 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
             referenced_glossary_terms.update(scan_glossary_definitions(content))
 
     # Download referenced example files
+    logger.info("Fetching %d referenced examples", len(referenced_examples))
     for example_file in sorted(referenced_examples):
         try:
             normalized_example = normalize_repo_relative_path(example_file, "example")
@@ -261,7 +267,6 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
         local_path = DATA_DIR / "examples" / normalized_example
         url = build_raw_url(repo_url, branch, remote_path)
 
-        logger.info("Fetching example: %s", normalized_example)
         content = fetch_file(url)
 
         if content is None:
@@ -272,6 +277,7 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
         counts["examples"] += 1
 
     # Download referenced include files
+    logger.info("Fetching %d referenced includes", len(referenced_includes))
     for include_file in sorted(referenced_includes):
         try:
             normalized_include = normalize_repo_relative_path(include_file, "include")
@@ -291,7 +297,6 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
 
         local_path = DATA_DIR / "includes" / normalized_include
         fetched_content = None
-        logger.info("Fetching include: %s", normalized_include)
         for remote_path in candidate_remote_paths:
             url = build_raw_url(repo_url, branch, remote_path)
             fetched_content = fetch_file(url, quiet=True)
@@ -308,6 +313,7 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
 
     # Download referenced glossary term files
     if glossary_path:
+        logger.info("Fetching %d referenced glossary terms", len(referenced_glossary_terms))
         for term_id in sorted(referenced_glossary_terms):
             try:
                 normalized_term = normalize_repo_relative_path(
@@ -321,7 +327,6 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
             local_path = DATA_DIR / "glossary" / normalized_term
             url = build_raw_url(repo_url, branch, remote_path)
 
-            logger.info("Fetching glossary term: %s", term_id)
             content = fetch_file(url)
 
             if content is None:

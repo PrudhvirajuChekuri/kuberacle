@@ -5,6 +5,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from tqdm import tqdm
+
 from k8s_rag.ingestion.schemas import ChunkRecord
 
 logger = logging.getLogger(__name__)
@@ -77,13 +79,14 @@ class IngestionPipeline:
         total_batches = (total + self.batch_size - 1) // self.batch_size
 
         logger.info("Starting ingestion: %d chunks, batch_size=%d", total, self.batch_size)
-        for batch_num, start in enumerate(range(0, total, self.batch_size), start=1):
-            batch = chunks[start:start + self.batch_size]
-            texts = [chunk.content for chunk in batch]
-            logger.debug("Batch %d/%d: embedding and upserting %d chunks", batch_num, total_batches, len(batch))
-            embeddings = self.embedder.embed_texts(texts)
-            self.vector_store.upsert_chunks(batch, embeddings)
-            upserted += len(batch)
+        batch_ranges = list(range(0, total, self.batch_size))
+        with tqdm(batch_ranges, desc="Ingesting", unit="batch") as progress:
+            for start in progress:
+                batch = chunks[start:start + self.batch_size]
+                texts = [chunk.content for chunk in batch]
+                embeddings = self.embedder.embed_texts(texts)
+                self.vector_store.upsert_chunks(batch, embeddings)
+                upserted += len(batch)
 
         logger.info("Ingestion complete: %d chunks upserted", upserted)
         return {"upserted_chunks": upserted}

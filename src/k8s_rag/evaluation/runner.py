@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from tqdm import tqdm
+
 logger = logging.getLogger(__name__)
 
 from k8s_rag.evaluation.dataset import GoldenExample
@@ -92,48 +94,46 @@ def evaluate_dataset(
     p1_scores: list[float] = []
     abstention_hits: list[float] = []
     non_empty_hits: list[float] = []
-    total = len(dataset)
+    with tqdm(dataset, desc="Evaluating", unit="case") as progress:
+        for row in progress:
+            result = qa_system.ask(row.question, top_k=top_k)
+            retrieved_chunk_ids = [chunk.chunk_id for chunk in result.retrieved_chunks]
+            retrieved_contexts = [chunk.content for chunk in result.retrieved_chunks]
+            citation_chunk_ids = [citation.chunk_id for citation in result.citations]
+            abstained = is_insufficient_evidence(result.answer)
+            answered_non_empty = non_empty_answer(result.answer)
 
-    for i, row in enumerate(dataset, start=1):
-        logger.info("Evaluating case %d/%d: %s", i, total, row.case_id)
-        result = qa_system.ask(row.question, top_k=top_k)
-        retrieved_chunk_ids = [chunk.chunk_id for chunk in result.retrieved_chunks]
-        retrieved_contexts = [chunk.content for chunk in result.retrieved_chunks]
-        citation_chunk_ids = [citation.chunk_id for citation in result.citations]
-        abstained = is_insufficient_evidence(result.answer)
-        answered_non_empty = non_empty_answer(result.answer)
+            if row.answerable:
+                answerable_count += 1
+                recall = retrieval_recall_at_k(retrieved_chunk_ids, row.reference_chunk_ids)
+                p1 = precision_at_1(retrieved_chunk_ids, row.reference_chunk_ids)
+                retrieval_scores.append(recall)
+                p1_scores.append(p1)
+                non_empty_hits.append(1.0 if answered_non_empty else 0.0)
+            else:
+                unanswerable_count += 1
+                recall = None
+                p1 = None
+                abstention_hits.append(1.0 if abstained else 0.0)
 
-        if row.answerable:
-            answerable_count += 1
-            recall = retrieval_recall_at_k(retrieved_chunk_ids, row.reference_chunk_ids)
-            p1 = precision_at_1(retrieved_chunk_ids, row.reference_chunk_ids)
-            retrieval_scores.append(recall)
-            p1_scores.append(p1)
-            non_empty_hits.append(1.0 if answered_non_empty else 0.0)
-        else:
-            unanswerable_count += 1
-            recall = None
-            p1 = None
-            abstention_hits.append(1.0 if abstained else 0.0)
-
-        case_results.append(
-            EvaluationCaseResult(
-                case_id=row.case_id,
-                answerable=row.answerable,
-                question=row.question,
-                answer=result.answer,
-                expected_answer=row.expected_answer,
-                retrieved_chunk_ids=retrieved_chunk_ids,
-                retrieved_contexts=retrieved_contexts,
-                citation_chunk_ids=citation_chunk_ids,
-                reference_chunk_ids=row.reference_chunk_ids,
-                retrieval_recall_at_k=recall,
-                precision_at_1=p1,
-                abstained=abstained,
-                non_empty_answer=answered_non_empty,
-                tags=row.tags,
+            case_results.append(
+                EvaluationCaseResult(
+                    case_id=row.case_id,
+                    answerable=row.answerable,
+                    question=row.question,
+                    answer=result.answer,
+                    expected_answer=row.expected_answer,
+                    retrieved_chunk_ids=retrieved_chunk_ids,
+                    retrieved_contexts=retrieved_contexts,
+                    citation_chunk_ids=citation_chunk_ids,
+                    reference_chunk_ids=row.reference_chunk_ids,
+                    retrieval_recall_at_k=recall,
+                    precision_at_1=p1,
+                    abstained=abstained,
+                    non_empty_answer=answered_non_empty,
+                    tags=row.tags,
+                )
             )
-        )
 
     retrieval_metric = _mean(retrieval_scores)
     p1_metric = _mean(p1_scores)

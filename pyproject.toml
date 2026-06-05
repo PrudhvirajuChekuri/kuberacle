@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Production-grade RAG system for Kubernetes documentation"
 requires-python = ">=3.10"
 dependencies = [
+    "tqdm",
     "pyyaml>=6.0",
     "google-genai",
     "google-auth",
