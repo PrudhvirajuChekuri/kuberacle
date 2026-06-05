@@ -11,7 +11,7 @@ import yaml
 class RAGConfig:
     """Runtime config for ingestion and retrieval.
 
-    Args:
+    Attributes:
         gcp_project: GCP project ID (from GCP_PROJECT env var).
         gcp_location: GCP region (from GCP_LOCATION env var).
         embedding_model_id: Vertex AI embedding model id.
@@ -30,7 +30,6 @@ class RAGConfig:
         reranker_enabled: Whether reranking is enabled.
         reranker_ranking_config: Discovery Engine ranking config name.
         reranker_model: Discovery Engine ranker model string.
-        reranker_top_k: Number of reranked chunks to keep.
         citation_strict_used_only: Whether to filter citations by used refs.
         citation_deduplicate: Whether to deduplicate citations by chunk_id.
         prompt_version: Prompt config version.
@@ -62,7 +61,6 @@ class RAGConfig:
     min_evidence_score: float
     min_supporting_chunks: int
     reranker_enabled: bool
-    reranker_top_k: int
     citation_strict_used_only: bool
     citation_deduplicate: bool
     prompt_version: str
@@ -90,6 +88,8 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
 
     Raises:
         RuntimeError: If GCP_PROJECT or GCP_LOCATION env vars are not set.
+        RuntimeError: If a required YAML key is missing.
+        RuntimeError: If hybrid_weight_semantic and hybrid_weight_lexical do not sum to 1.0.
     """
     gcp_project = os.environ.get("GCP_PROJECT", "")
     gcp_location = os.environ.get("GCP_LOCATION", "")
@@ -98,7 +98,7 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
     if not gcp_location:
         raise RuntimeError("GCP_LOCATION environment variable is not set.")
 
-    with open(config_path, "r") as file:
+    with open(config_path, "r", encoding="utf-8") as file:
         data = yaml.safe_load(file)
 
     embedding = data.get("embedding", {})
@@ -108,11 +108,37 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
     prompts = data.get("prompts", {})
     evaluation = data.get("evaluation", {})
 
+    try:
+        embedding_model_id = data["models"]["embedding"]
+        generation_model_id = data["models"]["generation"]
+    except KeyError as exc:
+        raise RuntimeError(f"Missing required config key under 'models': {exc}") from exc
+
+    try:
+        collection_name = data["vector_store"]["collection_name"]
+        persist_directory = data["vector_store"]["persist_directory"]
+    except KeyError as exc:
+        raise RuntimeError(f"Missing required config key under 'vector_store': {exc}") from exc
+
+    try:
+        temperature = float(data["generation"]["temperature"])
+        max_tokens = int(data["generation"]["max_tokens"])
+    except KeyError as exc:
+        raise RuntimeError(f"Missing required config key under 'generation': {exc}") from exc
+
+    hybrid_weight_semantic = float(retrieval.get("hybrid_weight_semantic", 0.6))
+    hybrid_weight_lexical = float(retrieval.get("hybrid_weight_lexical", 0.4))
+    if abs(hybrid_weight_semantic + hybrid_weight_lexical - 1.0) > 1e-9:
+        raise RuntimeError(
+            f"hybrid_weight_semantic ({hybrid_weight_semantic}) + "
+            f"hybrid_weight_lexical ({hybrid_weight_lexical}) must sum to 1.0."
+        )
+
     return RAGConfig(
         gcp_project=gcp_project,
         gcp_location=gcp_location,
-        embedding_model_id=data["models"]["embedding"],
-        generation_model_id=data["models"]["generation"],
+        embedding_model_id=embedding_model_id,
+        generation_model_id=generation_model_id,
         embedding_output_dimensionality=int(
             embedding.get("output_dimensionality", 768)
         ),
@@ -120,27 +146,24 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
             "ranking_config", "default_ranking_config"
         ),
         reranker_model=reranker.get("model", "semantic-ranker-default@latest"),
-        collection_name=data["vector_store"]["collection_name"],
-        persist_directory=data["vector_store"]["persist_directory"],
+        collection_name=collection_name,
+        persist_directory=persist_directory,
         semantic_top_k=int(retrieval.get("semantic_top_k", 5)),
         lexical_top_k=int(retrieval.get("lexical_top_k", 5)),
         merged_top_k=int(retrieval.get("merged_top_k", 10)),
         final_top_k=int(retrieval.get("final_top_k", 5)),
-        hybrid_weight_semantic=float(retrieval.get("hybrid_weight_semantic", 0.6)),
-        hybrid_weight_lexical=float(retrieval.get("hybrid_weight_lexical", 0.4)),
+        hybrid_weight_semantic=hybrid_weight_semantic,
+        hybrid_weight_lexical=hybrid_weight_lexical,
         min_evidence_score=float(retrieval.get("min_evidence_score", 0.0)),
         min_supporting_chunks=int(retrieval.get("min_supporting_chunks", 1)),
-        reranker_enabled=bool(reranker.get("enabled", False)),
-        reranker_top_k=int(reranker.get("top_k", 5)),
-        citation_strict_used_only=bool(citation.get("strict_used_only", True)),
-        citation_deduplicate=bool(citation.get("deduplicate", True)),
-        prompt_version=str(prompts.get("version", "v1")),
-        prompt_directory=str(prompts.get("directory", "configs/prompts")),
-        temperature=float(data["generation"]["temperature"]),
-        max_tokens=int(data["generation"]["max_tokens"]),
-        evaluation_dataset_path=str(
-            evaluation.get("dataset_path", "evals/golden/v1.jsonl")
-        ),
+        reranker_enabled=reranker.get("enabled", False),
+        citation_strict_used_only=citation.get("strict_used_only", True),
+        citation_deduplicate=citation.get("deduplicate", True),
+        prompt_version=prompts.get("version", "v1"),
+        prompt_directory=prompts.get("directory", "configs/prompts"),
+        temperature=temperature,
+        max_tokens=max_tokens,
+        evaluation_dataset_path=evaluation.get("dataset_path", "evals/golden/v2.jsonl"),
         eval_retrieval_recall_at_k_threshold=float(
             evaluation.get("retrieval_recall_at_k_threshold", 0.70)
         ),

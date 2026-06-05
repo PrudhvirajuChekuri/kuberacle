@@ -1,5 +1,6 @@
 """Shared data models for ingestion and retrieval."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -8,7 +9,7 @@ from typing import Any
 class ChunkRecord:
     """Chunk payload read from the preprocessing JSONL output.
 
-    Args:
+    Attributes:
         chunk_id: Stable unique identifier for chunk storage.
         content: Chunk text content used for embedding.
         metadata: Chunk metadata map (title, source_url, etc.).
@@ -16,14 +17,14 @@ class ChunkRecord:
 
     chunk_id: str
     content: str
-    metadata: dict[str, Any]
+    metadata: Mapping[str, Any]
 
 
 @dataclass(frozen=True)
 class RetrievedChunk:
     """Retrieved chunk with relevance score.
 
-    Args:
+    Attributes:
         chunk_id: Stored chunk id.
         content: Chunk text content.
         metadata: Chunk metadata map.
@@ -32,5 +33,5 @@ class RetrievedChunk:
 
     chunk_id: str
     content: str
-    metadata: dict[str, Any]
+    metadata: Mapping[str, Any]
     score: float
