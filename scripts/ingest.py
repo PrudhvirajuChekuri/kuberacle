@@ -35,8 +35,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Load config and run ingestion pipeline."""
     args = parse_args()
-    config = load_rag_config(CONFIG_PATH)
     print(f"Loading config from {CONFIG_PATH}")
+    config = load_rag_config(CONFIG_PATH)
     print(f"Embedding model: {config.embedding_model_id}")
     print(f"Collection: {config.collection_name}\n")
 
@@ -50,9 +50,12 @@ def main() -> None:
         collection_name=config.collection_name,
         persist_directory=str(PROJECT_ROOT / config.persist_directory),
     )
+    print("Resetting collection for clean ingest ...")
+    vector_store.reset_collection()
+
     pipeline = IngestionPipeline(embedder=embedder, vector_store=vector_store)
     stats = pipeline.run(Path(args.input))
-    print(f"Ingested chunks: {stats['ingested_chunks']}")
+    print(f"Upserted chunks: {stats['upserted_chunks']}")
 
 
 if __name__ == "__main__":
