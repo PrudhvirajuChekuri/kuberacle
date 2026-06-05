@@ -6,8 +6,7 @@ atomic, and attaches rich metadata to each chunk.
 """
 
 import re
-from k8s_rag.preprocessing.structure import analyze_structure, estimate_tokens
-from k8s_rag.preprocessing.links import extract_cross_references
+from k8s_rag.preprocessing.structure import analyze_structure, classify_code_block, estimate_tokens
 
 
 TARGET_TOKENS = 800
@@ -86,6 +85,24 @@ def _carry_over_sentences(prev_chunk_text: str) -> str:
     if estimate_tokens(candidate) > _OVERLAP_MAX_TOKENS:
         return ""
     return candidate
+
+
+def _heading_slug(text: str) -> str:
+    """Generate a URL-friendly anchor slug from a heading text.
+
+    Matches Hugo's default anchor generation: lowercase, strip non-word
+    characters (except hyphens), collapse whitespace to hyphens.
+
+    Args:
+        text: Raw heading text (without {#anchor} markers).
+
+    Returns:
+        Slug string suitable for use as a URL fragment.
+    """
+    slug = text.lower()
+    slug = re.sub(r"[^\w\s-]", "", slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    return slug.strip("-")
 
 
 def make_chunk_id(
@@ -304,6 +321,30 @@ def _split_at_paragraphs(
     if not chunks:
         return [text]
 
+    # Merge heading-only parts into the following part so a section heading
+    # split off from its content never becomes a standalone chunk.
+    merged: list[str] = []
+    pending_heading: str | None = None
+    for chunk in chunks:
+        body_lines = [l for l in chunk.split("\n") if l.strip() and not l.startswith("#")]
+        if not body_lines:
+            pending_heading = chunk if pending_heading is None else f"{pending_heading}\n\n{chunk}"
+        else:
+            if pending_heading is not None:
+                chunk = f"{pending_heading}\n\n{chunk}"
+                pending_heading = None
+            merged.append(chunk)
+    if pending_heading is not None:
+        # Trailing heading with no following content — attach to last chunk
+        if merged:
+            merged[-1] = f"{merged[-1]}\n\n{pending_heading}"
+        else:
+            merged.append(pending_heading)
+    chunks = merged
+
+    if not chunks:
+        return [text]
+
     # Sentence-level overlap: prepend the tail of each chunk to its
     # successor so continuation chunks don't start mid-thought.
     with_overlap = [chunks[0]]
@@ -327,7 +368,9 @@ def _force_split(text: str, hard_cap_tokens: int = HARD_CAP_TOKENS) -> list[str]
         hard_cap_tokens: Maximum tokens per chunk.
 
     Returns:
-        List of text strings, each under hard_cap_tokens.
+        List of text strings. Each part is kept under hard_cap_tokens
+        where line boundaries allow it. A single line that already
+        exceeds hard_cap_tokens is emitted as-is rather than truncated.
     """
     lines = text.split("\n")
     chunks = []
@@ -353,17 +396,42 @@ def _force_split(text: str, hard_cap_tokens: int = HARD_CAP_TOKENS) -> list[str]
 def _collect_content_flags(raw_content: str) -> tuple[bool, list[str], bool]:
     """Collect has_code, code_types, has_table for a chunk's own text.
 
+    Uses a direct line scan rather than analyze_structure to avoid false
+    "unclosed code fence" warnings when a fence spans a chunk boundary.
+
     Args:
         raw_content: Raw chunk content before breadcrumb prefixing.
 
     Returns:
         Tuple of (has_code, code_types, has_table).
     """
-    chunk_structure = analyze_structure(raw_content)
-    section_code = chunk_structure["code_blocks"]
-    code_types = sorted(set(cb["code_type"] for cb in section_code))
-    section_tables = chunk_structure["tables"]
-    return bool(section_code), code_types, bool(section_tables)
+    code_types: set[str] = set()
+    has_table = False
+    in_fence = False
+    lang = ""
+    fence_content: list[str] = []
+
+    for line in raw_content.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if not in_fence:
+                in_fence = True
+                lang = stripped[3:].strip()
+                fence_content = []
+            else:
+                code_types.add(classify_code_block(lang, "\n".join(fence_content)))
+                in_fence = False
+                fence_content = []
+        elif in_fence:
+            fence_content.append(line)
+        elif "|" in stripped and not stripped.startswith(">"):
+            has_table = True
+
+    # Fence open at chunk boundary — still classify what we have so far
+    if in_fence and fence_content:
+        code_types.add(classify_code_block(lang, "\n".join(fence_content)))
+
+    return bool(code_types), sorted(code_types), has_table
 
 
 def _make_chunk(
@@ -389,7 +457,6 @@ def _make_chunk(
         A chunk dict ready for serialization.
     """
     cleaned = _strip_anchor_ids(raw_content).strip()
-    cross_refs = extract_cross_references(cleaned)
     breadcrumb = _format_breadcrumb(heading_hierarchy)
     final_content = f"{breadcrumb}\n\n{cleaned}" if cleaned else breadcrumb
     has_code, code_types, has_table = _collect_content_flags(cleaned)
@@ -402,7 +469,7 @@ def _make_chunk(
         "code_types": code_types,
         "has_table": has_table,
         **{k: v for k, v in doc_metadata.items() if k not in _METADATA_DROP},
-        "cross_references": cross_refs,
+        "cross_references": [],  # populated by process_page after chunking
     }
 
 
@@ -438,6 +505,17 @@ def _chunk_node(
     full_tokens = estimate_tokens(full_text)
     hierarchy = parent_hierarchy + [node["heading"]["text"]]
     file_path = doc_metadata.get("file_path", "")
+
+    # Build node-specific metadata: append the heading anchor to source_url
+    # so each chunk deep-links to its exact section rather than the page root.
+    anchor = node["heading"].get("anchor") or _heading_slug(node["heading"]["text"])
+    source_url = doc_metadata.get("source_url", "")
+    if anchor and source_url and "#" not in source_url:
+        base = source_url if source_url.endswith("/") else f"{source_url}/"
+        node_metadata = {**doc_metadata, "source_url": f"{base}#{anchor}"}
+    else:
+        node_metadata = doc_metadata
+
     # If the whole section fits, make one chunk
     if full_tokens <= target_tokens:
         return [_make_chunk(
@@ -449,7 +527,7 @@ def _chunk_node(
             ),
             heading_hierarchy=hierarchy,
             raw_content=full_text,
-            doc_metadata=doc_metadata,
+            doc_metadata=node_metadata,
         )]
 
     chunks = []
@@ -457,7 +535,14 @@ def _chunk_node(
     if node["children"]:
         # Node's own content (between heading and first child)
         own_text = _get_own_content(lines, node)
-        if own_text.strip():
+        # Require actual body content below the heading line — the heading
+        # itself doesn't count, so a section with no prose before its first
+        # child produces no chunk here (children are still recursed into).
+        own_body = any(
+            l.strip() and not l.startswith("#")
+            for l in own_text.split("\n")[1:]
+        )
+        if own_body:
             if estimate_tokens(own_text) <= target_tokens:
                 chunks.append(_make_chunk(
                     chunk_id=make_chunk_id(
@@ -468,7 +553,7 @@ def _chunk_node(
                     ),
                     heading_hierarchy=hierarchy,
                     raw_content=own_text,
-                    doc_metadata=doc_metadata,
+                    doc_metadata=node_metadata,
                 ))
             else:
                 # Own content is too large — split at paragraphs
@@ -491,7 +576,7 @@ def _chunk_node(
                         ),
                         heading_hierarchy=hierarchy,
                         raw_content=part,
-                        doc_metadata=doc_metadata,
+                        doc_metadata=node_metadata,
                     ))
 
         # Recurse into children
@@ -532,7 +617,7 @@ def _chunk_node(
                     ),
                     heading_hierarchy=hierarchy,
                     raw_content=sub,
-                    doc_metadata=doc_metadata,
+                    doc_metadata=node_metadata,
                 ))
 
     return chunks

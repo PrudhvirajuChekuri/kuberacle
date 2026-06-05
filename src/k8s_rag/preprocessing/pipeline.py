@@ -13,8 +13,8 @@ from pathlib import Path
 
 from k8s_rag.preprocessing.frontmatter import extract_metadata
 from k8s_rag.preprocessing.shortcodes import resolve_shortcodes
-from k8s_rag.preprocessing.links import process_links, strip_links_to_text
-from k8s_rag.preprocessing.structure import analyze_structure
+from k8s_rag.preprocessing.links import process_links, strip_links_to_text, extract_cross_references
+from k8s_rag.preprocessing.structure import analyze_structure, estimate_tokens
 from k8s_rag.preprocessing.chunker import chunk_document
 
 
@@ -115,8 +115,10 @@ def process_page(
     # Stage 3: Strip "What's next"
     resolved = strip_whatsnext(resolved)
 
-    # Stage 4: Links — resolve relative to absolute, then strip to text
+    # Stage 4: Links — resolve relative to absolute, extract cross-references,
+    # then strip markdown link syntax to plain text
     resolved = process_links(resolved)
+    page_cross_references = extract_cross_references(resolved)
     resolved = strip_links_to_text(resolved)
 
     # Stage 5: Strip inline formatting
@@ -132,6 +134,25 @@ def process_page(
     if hard_cap_tokens is not None:
         chunk_kwargs["hard_cap_tokens"] = hard_cap_tokens
     chunks = chunk_document(resolved, structure, metadata, **chunk_kwargs)
+
+    # Stage 8: Post-processing — enrich chunks with page-level metadata
+    description = metadata.get("description", "").strip()
+    total_chunks = len(chunks)
+    for i, chunk in enumerate(chunks):
+        chunk["chunk_index"] = i
+        chunk["total_chunks"] = total_chunks
+        chunk["cross_references"] = page_cross_references
+
+    # Insert page description into the first chunk, after the breadcrumb
+    # line and before the body, so the breadcrumb remains the leading line.
+    if chunks and description and description not in chunks[0]["content"]:
+        content = chunks[0]["content"]
+        if "\n\n" in content:
+            breadcrumb, body = content.split("\n\n", 1)
+            chunks[0]["content"] = f"{breadcrumb}\n\n{description}\n\n{body}"
+        else:
+            chunks[0]["content"] = f"{content}\n\n{description}"
+        chunks[0]["token_count"] = estimate_tokens(chunks[0]["content"])
 
     return chunks, unhandled
 
