@@ -14,13 +14,21 @@ def _tokenize(text: str) -> list[str]:
 
 
 class BM25Retriever:
-    """In-memory BM25 retriever built from chunk records."""
+    """In-memory BM25 retriever built from chunk records.
+
+    Args:
+        chunks: Full chunk corpus fetched from the vector store.
+        top_k: Default number of results to return.
+    """
 
     def __init__(self, chunks: list[RetrievedChunk], top_k: int = 8) -> None:
         from rank_bm25 import BM25Okapi
 
         self.chunks = chunks
         self.top_k = top_k
+        if not chunks:
+            self._bm25 = None
+            return
         self._tokenized_corpus = [
             _tokenize(
                 " ".join(
@@ -37,13 +45,15 @@ class BM25Retriever:
 
     def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievedChunk]:
         """Retrieve lexical matches for query."""
+        if self._bm25 is None:
+            return []
         k = top_k if top_k is not None else self.top_k
         query_tokens = _tokenize(query)
         if not query_tokens:
             return []
         scores = self._bm25.get_scores(query_tokens)
         ranked_indices = sorted(
-            range(len(scores)),
+            (idx for idx in range(len(scores)) if scores[idx] > 0),
             key=lambda idx: float(scores[idx]),
             reverse=True,
         )[:k]
