@@ -2,6 +2,11 @@
 
 import json
 
+from k8s_rag.evaluation.ragas_metrics import (
+    AnswerRelevancyResult,
+    ContextPrecisionResult,
+    FaithfulnessResult,
+)
 from k8s_rag.evaluation.report import (
     build_markdown_summary,
     write_json_report,
@@ -22,7 +27,7 @@ def _make_summary(pass_gate: bool = True, failed_thresholds=None) -> EvaluationS
         citation_chunk_ids=["c1"],
         reference_chunk_ids=["c1"],
         retrieval_recall_at_k=1.0,
-        precision_at_1=1.0,
+        mrr=1.0,
         abstained=False,
         non_empty_answer=True,
         tags=["concept"],
@@ -32,7 +37,7 @@ def _make_summary(pass_gate: bool = True, failed_thresholds=None) -> EvaluationS
         answerable_cases=1,
         unanswerable_cases=0,
         retrieval_recall_at_k=1.0,
-        precision_at_1=1.0,
+        mrr=1.0,
         abstention_accuracy=1.0,
         non_empty_answer_rate=1.0,
         pass_gate=pass_gate,
@@ -42,15 +47,60 @@ def _make_summary(pass_gate: bool = True, failed_thresholds=None) -> EvaluationS
 
 
 def test_build_markdown_summary_pass():
-    """Markdown summary should show PASS and all four metrics."""
+    """Markdown summary should show PASS and all four deterministic metrics."""
     summary = _make_summary(pass_gate=True)
     md = build_markdown_summary(summary)
     assert "**PASS**" in md
     assert "retrieval_recall_at_k: 1.000" in md
-    assert "precision_at_1: 1.000" in md
+    assert "mrr: 1.000" in md
     assert "abstention_accuracy: 1.000" in md
     assert "non_empty_answer_rate: 1.000" in md
+    assert "faithfulness" not in md
     assert "Failed thresholds" not in md
+
+
+def test_build_markdown_summary_includes_faithfulness():
+    """Markdown summary should include faithfulness line when result is provided."""
+    summary = _make_summary(pass_gate=True)
+    faith = FaithfulnessResult(mean=0.960, parsed_count=12, total_count=12)
+    md = build_markdown_summary(summary, faithfulness=faith)
+    assert "faithfulness: 0.960 (12/12 parsed)" in md
+
+
+def test_build_markdown_summary_faithfulness_partial_parse():
+    """Markdown summary should show parsed count when some cases failed."""
+    summary = _make_summary(pass_gate=True)
+    faith = FaithfulnessResult(mean=0.900, parsed_count=9, total_count=12)
+    md = build_markdown_summary(summary, faithfulness=faith)
+    assert "faithfulness: 0.900 (9/12 parsed)" in md
+
+
+def test_build_markdown_summary_includes_context_precision():
+    """Markdown summary should include context_precision line when result is provided."""
+    summary = _make_summary(pass_gate=True)
+    cp = ContextPrecisionResult(mean=0.902, parsed_count=12, total_count=12)
+    md = build_markdown_summary(summary, context_precision=cp)
+    assert "context_precision: 0.902 (12/12 parsed)" in md
+
+
+def test_build_markdown_summary_includes_answer_relevancy():
+    """Markdown summary should include answer_relevancy line when result is provided."""
+    summary = _make_summary(pass_gate=True)
+    ar = AnswerRelevancyResult(mean=0.830, parsed_count=12, total_count=12)
+    md = build_markdown_summary(summary, answer_relevancy=ar)
+    assert "answer_relevancy: 0.830 (12/12 parsed)" in md
+
+
+def test_build_markdown_summary_includes_all_ragas_metrics():
+    """Markdown summary should include all three RAGAS metrics when provided."""
+    summary = _make_summary(pass_gate=True)
+    faith = FaithfulnessResult(mean=0.976, parsed_count=12, total_count=12)
+    cp = ContextPrecisionResult(mean=0.902, parsed_count=12, total_count=12)
+    ar = AnswerRelevancyResult(mean=0.830, parsed_count=12, total_count=12)
+    md = build_markdown_summary(summary, faithfulness=faith, context_precision=cp, answer_relevancy=ar)
+    assert "faithfulness: 0.976 (12/12 parsed)" in md
+    assert "context_precision: 0.902 (12/12 parsed)" in md
+    assert "answer_relevancy: 0.830 (12/12 parsed)" in md
 
 
 def test_build_markdown_summary_fail_shows_failed_thresholds():

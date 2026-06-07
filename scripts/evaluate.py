@@ -14,7 +14,11 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from k8s_rag.evaluation.dataset import load_golden_dataset
-from k8s_rag.evaluation.ragas_metrics import run_optional_ragas_metrics
+from k8s_rag.evaluation.ragas_metrics import (
+    compute_answer_relevancy,
+    compute_context_precision,
+    compute_faithfulness,
+)
 from k8s_rag.evaluation.report import (
     build_markdown_summary,
     write_json_report,
@@ -59,8 +63,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         choices=["deterministic", "full"],
-        default="deterministic",
-        help="deterministic: hard-gate metrics only; full: include optional RAGAS report.",
+        default="full",
+        help="deterministic: retrieval/generation gates only; full: also runs RAGAS gates (default).",
     )
     parser.add_argument(
         "--json-out",
@@ -174,7 +178,7 @@ def main() -> None:
     qa_system = build_qa_system(config)
     thresholds = EvaluationThresholds(
         retrieval_recall_at_k=config.eval_retrieval_recall_at_k_threshold,
-        precision_at_1=config.eval_precision_at_1_threshold,
+        mrr=config.eval_mrr_threshold,
         abstention_accuracy=config.eval_abstention_accuracy_threshold,
         non_empty_answer_rate=config.eval_non_empty_answer_rate_threshold,
     )
@@ -185,24 +189,89 @@ def main() -> None:
         top_k=args.top_k,
     )
 
+    faithfulness_result = None
+    context_precision_result = None
+    answer_relevancy_result = None
+    ragas_passed = True
+
+    if args.mode == "full":
+        faithfulness_result = compute_faithfulness(
+            case_results=summary.case_results,
+            gcp_project=config.gcp_project,
+            gcp_location=config.gcp_location,
+            judge_model=config.eval_faithfulness_judge_model,
+        )
+        faithfulness_passed = (
+            faithfulness_result.parsed_count >= config.eval_faithfulness_min_parsed
+            and faithfulness_result.mean >= config.eval_faithfulness_threshold
+        )
+        if not faithfulness_passed:
+            logger.warning(
+                "Faithfulness gate FAILED: mean=%.3f (threshold=%.3f), parsed=%d/%d (min=%d)",
+                faithfulness_result.mean,
+                config.eval_faithfulness_threshold,
+                faithfulness_result.parsed_count,
+                faithfulness_result.total_count,
+                config.eval_faithfulness_min_parsed,
+            )
+
+        context_precision_result = compute_context_precision(
+            case_results=summary.case_results,
+            gcp_project=config.gcp_project,
+            gcp_location=config.gcp_location,
+            judge_model=config.eval_context_precision_judge_model,
+        )
+        context_precision_passed = (
+            context_precision_result.parsed_count >= config.eval_context_precision_min_parsed
+            and context_precision_result.mean >= config.eval_context_precision_threshold
+        )
+        if not context_precision_passed:
+            logger.warning(
+                "Context precision gate FAILED: mean=%.3f (threshold=%.3f), parsed=%d/%d (min=%d)",
+                context_precision_result.mean,
+                config.eval_context_precision_threshold,
+                context_precision_result.parsed_count,
+                context_precision_result.total_count,
+                config.eval_context_precision_min_parsed,
+            )
+
+        answer_relevancy_result = compute_answer_relevancy(
+            case_results=summary.case_results,
+            gcp_project=config.gcp_project,
+            gcp_location=config.gcp_location,
+            judge_model=config.eval_answer_relevancy_judge_model,
+            embedding_model=config.eval_answer_relevancy_embedding_model,
+        )
+        answer_relevancy_passed = (
+            answer_relevancy_result.parsed_count >= config.eval_answer_relevancy_min_parsed
+            and answer_relevancy_result.mean >= config.eval_answer_relevancy_threshold
+        )
+        if not answer_relevancy_passed:
+            logger.warning(
+                "Answer relevancy gate FAILED: mean=%.3f (threshold=%.3f), parsed=%d/%d (min=%d)",
+                answer_relevancy_result.mean,
+                config.eval_answer_relevancy_threshold,
+                answer_relevancy_result.parsed_count,
+                answer_relevancy_result.total_count,
+                config.eval_answer_relevancy_min_parsed,
+            )
+
+        ragas_passed = faithfulness_passed and context_precision_passed and answer_relevancy_passed
+
     json_path = resolve_path(args.json_out)
     md_path = resolve_path(args.md_out)
     write_json_report(summary, json_path)
-    write_markdown_summary(summary, md_path)
+    write_markdown_summary(
+        summary, md_path, faithfulness_result, context_precision_result, answer_relevancy_result, ragas_passed
+    )
 
-    print(build_markdown_summary(summary))
+    print(build_markdown_summary(
+        summary, faithfulness_result, context_precision_result, answer_relevancy_result, ragas_passed
+    ))
     logger.info("JSON report: %s", json_path)
     logger.info("Markdown report: %s", md_path)
 
-    if args.mode == "full":
-        ragas_result = run_optional_ragas_metrics(summary.case_results)
-        ragas_path = md_path.parent / "latest-ragas.json"
-        ragas_path.write_text(json.dumps(ragas_result, indent=2, ensure_ascii=False), encoding="utf-8")
-        logger.info("RAGAS report: %s", ragas_path)
-        if ragas_result.get("status") != "ok":
-            logger.warning("RAGAS status: %s — %s", ragas_result.get("status"), ragas_result.get("reason"))
-
-    raise SystemExit(determine_exit_code(summary.pass_gate))
+    raise SystemExit(determine_exit_code(summary.pass_gate and ragas_passed))
 
 
 if __name__ == "__main__":

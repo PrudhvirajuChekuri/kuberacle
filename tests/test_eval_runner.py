@@ -64,7 +64,7 @@ def test_evaluate_dataset_passes_gate_for_good_outputs():
         dataset=dataset,
         thresholds=EvaluationThresholds(
             retrieval_recall_at_k=0.5,
-            precision_at_1=0.5,
+            mrr=0.5,
             abstention_accuracy=1.0,
             non_empty_answer_rate=1.0,
         ),
@@ -97,12 +97,12 @@ def test_evaluate_dataset_fails_gate_on_threshold_regression():
         dataset=dataset,
         thresholds=EvaluationThresholds(
             retrieval_recall_at_k=0.9,
-            precision_at_1=0.9,
+            mrr=0.9,
             abstention_accuracy=0.0,
             non_empty_answer_rate=1.0,
         ),
     )
     assert summary.pass_gate is False
     assert "retrieval_recall_at_k" in summary.failed_thresholds
-    assert "precision_at_1" in summary.failed_thresholds
+    assert "mrr" in summary.failed_thresholds
     assert "non_empty_answer_rate" in summary.failed_thresholds

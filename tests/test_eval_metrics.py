@@ -2,8 +2,8 @@
 
 from k8s_rag.evaluation.metrics import (
     is_insufficient_evidence,
+    mean_reciprocal_rank,
     non_empty_answer,
-    precision_at_1,
     retrieval_recall_at_k,
 )
 
@@ -17,19 +17,29 @@ def test_retrieval_recall_at_k_uses_reference_overlap():
     assert score == 0.5
 
 
-def test_precision_at_1_returns_one_when_top_chunk_is_reference():
-    """Precision@1 should be 1.0 when the top-ranked chunk is a reference."""
-    assert precision_at_1(["a", "b", "c"], ["a"]) == 1.0
+def test_mean_reciprocal_rank_returns_one_when_top_chunk_is_reference():
+    """MRR should be 1.0 when the first relevant chunk is at rank 1."""
+    assert mean_reciprocal_rank(["a", "b", "c"], ["a"]) == 1.0
 
 
-def test_precision_at_1_returns_zero_when_top_chunk_is_not_reference():
-    """Precision@1 should be 0.0 when the top-ranked chunk is not a reference."""
-    assert precision_at_1(["b", "a", "c"], ["a"]) == 0.0
+def test_mean_reciprocal_rank_returns_half_when_relevant_at_rank_2():
+    """MRR should be 0.5 when the first relevant chunk is at rank 2."""
+    assert mean_reciprocal_rank(["b", "a", "c"], ["a"]) == 0.5
 
 
-def test_precision_at_1_returns_zero_for_empty_retrieved():
-    """Precision@1 should be 0.0 when no chunks were retrieved."""
-    assert precision_at_1([], ["a"]) == 0.0
+def test_mean_reciprocal_rank_returns_third_when_relevant_at_rank_3():
+    """MRR should be 1/3 when the first relevant chunk is at rank 3."""
+    assert abs(mean_reciprocal_rank(["b", "c", "a"], ["a"]) - 1 / 3) < 1e-9
+
+
+def test_mean_reciprocal_rank_returns_zero_for_empty_retrieved():
+    """MRR should be 0.0 when no chunks were retrieved."""
+    assert mean_reciprocal_rank([], ["a"]) == 0.0
+
+
+def test_mean_reciprocal_rank_returns_zero_when_no_relevant_chunk_found():
+    """MRR should be 0.0 when none of the retrieved chunks are relevant."""
+    assert mean_reciprocal_rank(["b", "c"], ["a"]) == 0.0
 
 
 def test_answer_flags_detect_abstention_and_non_empty():
