@@ -38,7 +38,17 @@ generation:
 
 evaluation:
   dataset_path: "evals/golden/v2.jsonl"
-  retrieval_recall_at_k_threshold: 0.75
-  precision_at_1_threshold: 0.65
+  retrieval_recall_at_k_threshold: 0.90
+  mrr_threshold: 0.90
   abstention_accuracy_threshold: 0.90
   non_empty_answer_rate_threshold: 0.90
+  faithfulness_threshold: 0.90
+  faithfulness_judge_model: "gemini-2.5-flash"
+  faithfulness_min_parsed: 10
+  context_precision_threshold: 0.85
+  context_precision_judge_model: "gemini-2.5-flash"
+  context_precision_min_parsed: 10
+  answer_relevancy_threshold: 0.80
+  answer_relevancy_judge_model: "gemini-2.5-flash"
+  answer_relevancy_embedding_model: "gemini-embedding-001"
+  answer_relevancy_min_parsed: 10

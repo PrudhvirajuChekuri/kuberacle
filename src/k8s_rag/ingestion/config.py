@@ -38,9 +38,19 @@ class RAGConfig:
         max_tokens: Max generated tokens.
         evaluation_dataset_path: Default golden eval dataset path.
         eval_retrieval_recall_at_k_threshold: Min retrieval recall gate.
-        eval_precision_at_1_threshold: Min precision@1 post-rerank gate.
+        eval_mrr_threshold: Min mean reciprocal rank gate.
         eval_abstention_accuracy_threshold: Min abstention accuracy gate.
         eval_non_empty_answer_rate_threshold: Min non-empty answer gate.
+        eval_faithfulness_threshold: Min RAGAS faithfulness gate.
+        eval_faithfulness_judge_model: Vertex AI model ID used as faithfulness judge.
+        eval_faithfulness_min_parsed: Min cases that must score successfully for the gate to be valid.
+        eval_context_precision_threshold: Min RAGAS context precision gate.
+        eval_context_precision_judge_model: Vertex AI model ID used as context precision judge.
+        eval_context_precision_min_parsed: Min cases that must score successfully for the gate to be valid.
+        eval_answer_relevancy_threshold: Min RAGAS answer relevancy gate.
+        eval_answer_relevancy_judge_model: Vertex AI model ID used as answer relevancy judge.
+        eval_answer_relevancy_embedding_model: Embedding model ID used for answer relevancy similarity scoring.
+        eval_answer_relevancy_min_parsed: Min cases that must score successfully for the gate to be valid.
     """
 
     gcp_project: str
@@ -69,9 +79,19 @@ class RAGConfig:
     max_tokens: int
     evaluation_dataset_path: str
     eval_retrieval_recall_at_k_threshold: float
-    eval_precision_at_1_threshold: float
+    eval_mrr_threshold: float
     eval_abstention_accuracy_threshold: float
     eval_non_empty_answer_rate_threshold: float
+    eval_faithfulness_threshold: float
+    eval_faithfulness_judge_model: str
+    eval_faithfulness_min_parsed: int
+    eval_context_precision_threshold: float
+    eval_context_precision_judge_model: str
+    eval_context_precision_min_parsed: int
+    eval_answer_relevancy_threshold: float
+    eval_answer_relevancy_judge_model: str
+    eval_answer_relevancy_embedding_model: str
+    eval_answer_relevancy_min_parsed: int
 
 
 def load_rag_config(config_path: str | Path) -> RAGConfig:
@@ -167,13 +187,43 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
         eval_retrieval_recall_at_k_threshold=float(
             evaluation.get("retrieval_recall_at_k_threshold", 0.70)
         ),
-        eval_precision_at_1_threshold=float(
-            evaluation.get("precision_at_1_threshold", 0.70)
+        eval_mrr_threshold=float(
+            evaluation.get("mrr_threshold", 0.70)
         ),
         eval_abstention_accuracy_threshold=float(
             evaluation.get("abstention_accuracy_threshold", 0.90)
         ),
         eval_non_empty_answer_rate_threshold=float(
             evaluation.get("non_empty_answer_rate_threshold", 0.90)
+        ),
+        eval_faithfulness_threshold=float(
+            evaluation.get("faithfulness_threshold", 0.90)
+        ),
+        eval_faithfulness_judge_model=evaluation.get(
+            "faithfulness_judge_model", "gemini-2.5-flash"
+        ),
+        eval_faithfulness_min_parsed=int(
+            evaluation.get("faithfulness_min_parsed", 10)
+        ),
+        eval_context_precision_threshold=float(
+            evaluation.get("context_precision_threshold", 0.85)
+        ),
+        eval_context_precision_judge_model=evaluation.get(
+            "context_precision_judge_model", "gemini-2.5-flash"
+        ),
+        eval_context_precision_min_parsed=int(
+            evaluation.get("context_precision_min_parsed", 10)
+        ),
+        eval_answer_relevancy_threshold=float(
+            evaluation.get("answer_relevancy_threshold", 0.80)
+        ),
+        eval_answer_relevancy_judge_model=evaluation.get(
+            "answer_relevancy_judge_model", "gemini-2.5-flash"
+        ),
+        eval_answer_relevancy_embedding_model=evaluation.get(
+            "answer_relevancy_embedding_model", "gemini-embedding-001"
+        ),
+        eval_answer_relevancy_min_parsed=int(
+            evaluation.get("answer_relevancy_min_parsed", 10)
         ),
     )

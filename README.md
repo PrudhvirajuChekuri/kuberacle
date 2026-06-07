@@ -18,7 +18,7 @@ The system processes the official [Kubernetes documentation](https://kubernetes.
 2. **Ingestion** — Embed chunks with `gemini-embedding-001` and store in ChromaDB
 3. **Retrieval** — Hybrid search (BM25 + semantic) with Discovery Engine reranking
 4. **Generation** — Grounded answers with inline citations using `gemini-2.5-flash-lite`
-5. **Evaluation** — Deterministic retrieval/citation quality gates in CI
+5. **Evaluation** — Deterministic and RAGAS-based quality gates in CI
 
 ## Data Source
 
@@ -91,10 +91,13 @@ GCP_LOCATION=us-central1
 
 4. Run offline evaluation:
    ```bash
-   # Smoke eval (fast CI gate)
+   # Smoke eval (full mode, includes RAGAS gates — same as CI)
    python scripts/evaluate.py --dataset evals/golden/smoke.jsonl
 
-   # Full benchmark
+   # Fast local run — deterministic gates only, skips RAGAS (~20s)
+   python scripts/evaluate.py --dataset evals/golden/v2.jsonl --mode deterministic
+
+   # Full benchmark with RAGAS gates
    python scripts/evaluate.py --dataset evals/golden/v2.jsonl
    ```
 
@@ -106,9 +109,12 @@ The evaluation script writes JSON and markdown artifacts under `artifacts/evals/
 
 The smoke eval runs on every pull request. The full benchmark can be triggered manually via `workflow_dispatch` in GitHub Actions.
 
-| Metric | Threshold |
-|---|---|
-| `retrieval_recall_at_k` | 0.75 |
-| `precision_at_1` | 0.65 |
-| `abstention_accuracy` | 0.90 |
-| `non_empty_answer_rate` | 0.90 |
+| Metric | Threshold | Mode |
+|---|---|---|
+| `retrieval_recall_at_k` | 0.90 | deterministic + full |
+| `mrr` | 0.90 | deterministic + full |
+| `abstention_accuracy` | 0.90 | deterministic + full |
+| `non_empty_answer_rate` | 0.90 | deterministic + full |
+| `faithfulness` | 0.90 | full only |
+| `context_precision` | 0.85 | full only |
+| `answer_relevancy` | 0.80 | full only |

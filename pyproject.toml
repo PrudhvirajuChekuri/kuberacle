@@ -17,15 +17,14 @@ dependencies = [
     "python-dotenv",
     "chromadb",
     "rank-bm25",
+    "datasets",
+    "ragas",
+    "langchain-google-genai",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-]
-eval = [
-    "datasets",
-    "ragas",
 ]
 
 [tool.setuptools.packages.find]

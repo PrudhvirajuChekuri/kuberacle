@@ -45,10 +45,20 @@ def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):
         "  max_tokens: 500\n"
         "evaluation:\n"
         "  dataset_path: evals/golden/v2.jsonl\n"
-        "  retrieval_recall_at_k_threshold: 0.72\n"
-        "  precision_at_1_threshold: 0.75\n"
+        "  retrieval_recall_at_k_threshold: 0.90\n"
+        "  mrr_threshold: 0.75\n"
         "  abstention_accuracy_threshold: 0.91\n"
         "  non_empty_answer_rate_threshold: 0.95\n"
+        "  faithfulness_threshold: 0.88\n"
+        "  faithfulness_judge_model: gemini-2.5-flash\n"
+        "  faithfulness_min_parsed: 11\n"
+        "  context_precision_threshold: 0.83\n"
+        "  context_precision_judge_model: gemini-2.5-flash\n"
+        "  context_precision_min_parsed: 9\n"
+        "  answer_relevancy_threshold: 0.78\n"
+        "  answer_relevancy_judge_model: gemini-2.5-flash\n"
+        "  answer_relevancy_embedding_model: gemini-embedding-001\n"
+        "  answer_relevancy_min_parsed: 8\n"
     )
 
     config = load_rag_config(config_path)
@@ -68,10 +78,20 @@ def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):
     assert config.prompt_version == "v1"
     assert config.max_tokens == 500
     assert config.evaluation_dataset_path == "evals/golden/v2.jsonl"
-    assert config.eval_retrieval_recall_at_k_threshold == 0.72
-    assert config.eval_precision_at_1_threshold == 0.75
+    assert config.eval_retrieval_recall_at_k_threshold == 0.90
+    assert config.eval_mrr_threshold == 0.75
     assert config.eval_abstention_accuracy_threshold == 0.91
     assert config.eval_non_empty_answer_rate_threshold == 0.95
+    assert config.eval_faithfulness_threshold == 0.88
+    assert config.eval_faithfulness_judge_model == "gemini-2.5-flash"
+    assert config.eval_faithfulness_min_parsed == 11
+    assert config.eval_context_precision_threshold == 0.83
+    assert config.eval_context_precision_judge_model == "gemini-2.5-flash"
+    assert config.eval_context_precision_min_parsed == 9
+    assert config.eval_answer_relevancy_threshold == 0.78
+    assert config.eval_answer_relevancy_judge_model == "gemini-2.5-flash"
+    assert config.eval_answer_relevancy_embedding_model == "gemini-embedding-001"
+    assert config.eval_answer_relevancy_min_parsed == 8
 
 
 def test_load_rag_config_raises_without_gcp_project(tmp_path, monkeypatch):

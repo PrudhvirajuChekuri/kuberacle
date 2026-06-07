@@ -18,14 +18,18 @@ def retrieval_recall_at_k(
     return len(retrieved.intersection(reference)) / float(len(reference))
 
 
-def precision_at_1(
+def mean_reciprocal_rank(
     retrieved_chunk_ids: list[str],
     reference_chunk_ids: list[str],
 ) -> float:
-    """Return 1.0 if the top-ranked retrieved chunk is a reference chunk."""
+    """Return the reciprocal rank of the first relevant chunk in the retrieved list."""
     if not retrieved_chunk_ids or not reference_chunk_ids:
         return 0.0
-    return 1.0 if retrieved_chunk_ids[0] in set(reference_chunk_ids) else 0.0
+    reference = set(reference_chunk_ids)
+    for rank, chunk_id in enumerate(retrieved_chunk_ids, start=1):
+        if chunk_id in reference:
+            return 1.0 / rank
+    return 0.0
 
 
 def non_empty_answer(answer: str) -> bool:

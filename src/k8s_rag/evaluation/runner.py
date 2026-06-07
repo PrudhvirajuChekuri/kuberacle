@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 from k8s_rag.evaluation.dataset import GoldenExample
 from k8s_rag.evaluation.metrics import (
     is_insufficient_evidence,
+    mean_reciprocal_rank,
     non_empty_answer,
-    precision_at_1,
     retrieval_recall_at_k,
 )
 
@@ -22,7 +22,7 @@ class EvaluationThresholds:
     """Thresholds for deterministic quality gates."""
 
     retrieval_recall_at_k: float
-    precision_at_1: float
+    mrr: float
     abstention_accuracy: float
     non_empty_answer_rate: float
 
@@ -41,7 +41,7 @@ class EvaluationCaseResult:
     citation_chunk_ids: list[str]
     reference_chunk_ids: list[str]
     retrieval_recall_at_k: float | None
-    precision_at_1: float | None
+    mrr: float | None
     abstained: bool
     non_empty_answer: bool
     tags: list[str]
@@ -55,7 +55,7 @@ class EvaluationSummary:
     answerable_cases: int
     unanswerable_cases: int
     retrieval_recall_at_k: float
-    precision_at_1: float
+    mrr: float
     abstention_accuracy: float
     non_empty_answer_rate: float
     pass_gate: bool
@@ -91,7 +91,7 @@ def evaluate_dataset(
     answerable_count = 0
     unanswerable_count = 0
     retrieval_scores: list[float] = []
-    p1_scores: list[float] = []
+    mrr_scores: list[float] = []
     abstention_hits: list[float] = []
     non_empty_hits: list[float] = []
     with tqdm(dataset, desc="Evaluating", unit="case") as progress:
@@ -106,14 +106,14 @@ def evaluate_dataset(
             if row.answerable:
                 answerable_count += 1
                 recall = retrieval_recall_at_k(retrieved_chunk_ids, row.reference_chunk_ids)
-                p1 = precision_at_1(retrieved_chunk_ids, row.reference_chunk_ids)
+                mrr = mean_reciprocal_rank(retrieved_chunk_ids, row.reference_chunk_ids)
                 retrieval_scores.append(recall)
-                p1_scores.append(p1)
+                mrr_scores.append(mrr)
                 non_empty_hits.append(1.0 if answered_non_empty else 0.0)
             else:
                 unanswerable_count += 1
                 recall = None
-                p1 = None
+                mrr = None
                 abstention_hits.append(1.0 if abstained else 0.0)
 
             case_results.append(
@@ -128,7 +128,7 @@ def evaluate_dataset(
                     citation_chunk_ids=citation_chunk_ids,
                     reference_chunk_ids=row.reference_chunk_ids,
                     retrieval_recall_at_k=recall,
-                    precision_at_1=p1,
+                    mrr=mrr,
                     abstained=abstained,
                     non_empty_answer=answered_non_empty,
                     tags=row.tags,
@@ -136,7 +136,7 @@ def evaluate_dataset(
             )
 
     retrieval_metric = _mean(retrieval_scores)
-    p1_metric = _mean(p1_scores)
+    mrr_metric = _mean(mrr_scores)
     abstention_metric = 1.0 if unanswerable_count == 0 else _mean(abstention_hits)
     non_empty_metric = _mean(non_empty_hits)
 
@@ -145,9 +145,9 @@ def evaluate_dataset(
             retrieval_metric,
             thresholds.retrieval_recall_at_k,
         ),
-        "precision_at_1": (
-            p1_metric,
-            thresholds.precision_at_1,
+        "mrr": (
+            mrr_metric,
+            thresholds.mrr,
         ),
         "abstention_accuracy": (
             abstention_metric,
@@ -169,7 +169,7 @@ def evaluate_dataset(
         answerable_cases=answerable_count,
         unanswerable_cases=unanswerable_count,
         retrieval_recall_at_k=retrieval_metric,
-        precision_at_1=p1_metric,
+        mrr=mrr_metric,
         abstention_accuracy=abstention_metric,
         non_empty_answer_rate=non_empty_metric,
         pass_gate=not failed_thresholds,
