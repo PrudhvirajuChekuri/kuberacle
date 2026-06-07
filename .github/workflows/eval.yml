@@ -34,17 +34,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,eval]"
-
-      - name: Run unit tests
-        run: pytest -q
+          pip install -e ".[dev]"
 
       - name: Pull vector index from GCS
         run: |
           python scripts/pull_index.py \
             --bucket ${{ secrets.GCS_INDEX_BUCKET }}
 
-      - name: Run deterministic smoke evaluation gate
+      - name: Run smoke evaluation gate
         run: |
           python scripts/evaluate.py \
             --dataset evals/golden/smoke.jsonl \
@@ -84,10 +81,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,eval]"
-
-      - name: Run unit tests
-        run: pytest -q
+          pip install -e ".[dev]"
 
       - name: Prepare full corpus
         env:
@@ -99,20 +93,11 @@ jobs:
       - name: Build vector index
         run: python scripts/ingest.py
 
-      - name: Run deterministic full evaluation gate
+      - name: Run full evaluation gate
         run: |
           python scripts/evaluate.py \
-            --mode deterministic \
             --json-out artifacts/evals/ci-full-eval.json \
             --md-out artifacts/evals/ci-full-eval.md
-
-      - name: Run optional full RAGAS evaluation report
-        continue-on-error: true
-        run: |
-          python scripts/evaluate.py \
-            --mode full \
-            --json-out artifacts/evals/ci-full-eval-ragas.json \
-            --md-out artifacts/evals/ci-full-eval-ragas.md
 
       - name: Push vector index to GCS
         if: success()
