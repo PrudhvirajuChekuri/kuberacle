@@ -1,6 +1,6 @@
-# Web UI — Kubernetes Docs Assistant
+# Kuberacle - Kubernetes Docs Web UI
 
-A Next.js chat interface for the [k8s-docs-rag](../README.md) pipeline. It streams
+Kuberacle is a Next.js chat interface for the [k8s-docs-rag](../README.md) pipeline. It streams
 grounded answers token-by-token and renders citations as clickable source cards.
 
 ## Stack
@@ -16,8 +16,9 @@ grounded answers token-by-token and renders citations as clickable source cards.
   streams the Server-Sent Events response straight through to the browser.
 - The backend URL is read from `RAG_API_URL` (see `.env.local`), defaulting to
   `http://127.0.0.1:8000`.
-- Inline `[n]` citation markers link to their matching source card; an
-  "ungrounded" notice is shown when an answer could not be verified.
+- Clicking an inline `[n]` citation marker scrolls to and highlights its source
+  card, and hovering one shows a source preview; an "ungrounded" notice is shown
+  when an answer could not be verified.
 
 ## Run locally
 

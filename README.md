@@ -14,22 +14,22 @@ The full RAG pipeline is implemented and running on GCP. Preprocessing, ingestio
 
 The system processes the official [Kubernetes documentation](https://kubernetes.io/docs/) (v1.36) through a multi-stage pipeline:
 
-1. **Preprocessing** — Parse frontmatter, resolve Hugo shortcodes, smart chunking
-2. **Ingestion** — Embed chunks with `gemini-embedding-001` and store in ChromaDB
-3. **Retrieval** — Hybrid search (BM25 + semantic) with Discovery Engine reranking
-4. **Generation** — Grounded answers with inline citations using `gemini-2.5-flash-lite`
-5. **Evaluation** — Deterministic and RAGAS-based quality gates in CI
+1. **Preprocessing** - Parse frontmatter, resolve Hugo shortcodes, smart chunking
+2. **Ingestion** - Embed chunks with `gemini-embedding-001` and store in ChromaDB
+3. **Retrieval** - Hybrid search (BM25 + semantic) with Discovery Engine reranking
+4. **Generation** - Grounded answers with inline citations using `gemini-2.5-flash-lite`
+5. **Evaluation** - Deterministic and RAGAS-based quality gates in CI
 
 ## Data Source
 
 Raw markdown from the [`kubernetes/website`](https://github.com/kubernetes/website) repository (`main` branch, v1.36), covering:
 
-- **Concepts** — How Kubernetes works (pods, deployments, services, networking, storage)
-- **Tasks** — Step-by-step operational guides (debugging, configuration, networking)
-- **Tutorials** — End-to-end walkthroughs (deploying applications, stateful workloads)
+- **Concepts** - How Kubernetes works (pods, deployments, services, networking, storage)
+- **Tasks** - Step-by-step operational guides (debugging, configuration, networking)
+- **Tutorials** - End-to-end walkthroughs (deploying applications, stateful workloads)
 
 One dataset config is used for all runs:
-- **Full** (`configs/datasets/full.yaml`) — the full corpus used for ingestion and evaluation
+- **Full** (`configs/datasets/full.yaml`) - the full corpus used for ingestion and evaluation
 
 ## Stack
 
@@ -91,10 +91,10 @@ GCP_LOCATION=us-central1
 
 4. Run offline evaluation:
    ```bash
-   # Smoke eval (full mode, includes RAGAS gates — same as CI)
-   python scripts/evaluate.py --dataset evals/golden/smoke.jsonl
+   # Smoke eval, deterministic gates only (same as CI)
+   python scripts/evaluate.py --dataset evals/golden/smoke.jsonl --mode deterministic
 
-   # Fast local run — deterministic gates only, skips RAGAS (~20s)
+   # Fast local run, deterministic gates only, skips RAGAS (~20s)
    python scripts/evaluate.py --dataset evals/golden/v2.jsonl --mode deterministic
 
    # Full benchmark with RAGAS gates
@@ -134,13 +134,13 @@ event: error   data: {"message": "..."}
 
 ## Web UI
 
-A Next.js chat interface (`web/`) streams answers token-by-token from the API and renders citations as clickable source cards. Run both processes locally:
+Kuberacle, a Next.js chat interface (`web/`), streams answers token-by-token from the API and renders citations as clickable source cards. Run both processes locally:
 
 ```bash
-# Terminal 1 — backend
+# Terminal 1 - backend
 python scripts/serve.py
 
-# Terminal 2 — frontend
+# Terminal 2 - frontend
 cd web
 npm install        # first time only
 npm run dev        # http://localhost:3000
@@ -148,7 +148,7 @@ npm run dev        # http://localhost:3000
 
 The frontend proxies requests to the backend via `RAG_API_URL` (defaults to `http://127.0.0.1:8000`, set in `web/.env.local`).
 
-**Stack:** Next.js (App Router) + TypeScript, Tailwind CSS + shadcn/ui, `react-markdown`. A custom hook consumes the SSE stream; inline `[n]` markers link to their matching citation card, and an "ungrounded" notice is shown when the answer could not be verified.
+**Stack:** Next.js (App Router) + TypeScript, Tailwind CSS + shadcn/ui, `react-markdown`. A custom hook consumes the SSE stream; clicking an inline `[n]` marker scrolls to and highlights its citation card, hovering one shows a source preview, and an "ungrounded" notice is shown when the answer could not be verified.
 
 ## Evaluation Gates
 

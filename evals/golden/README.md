@@ -50,7 +50,7 @@ being tested (`troubleshooting`, `yaml`, `comparison`, `multi-hop`, `pods`,
 cases designed to cover the critical retrieval and generation paths: basic
 factual questions, multi-chunk questions, unanswerable abstention cases, and
 near-miss precision cases. All cases reference chunks from the full corpus
-index. CI runs evaluate against the full index downloaded from GCS — no
+index. CI runs evaluate against the full index downloaded from GCS - no
 separate smoke corpus or ingestion step is needed.
 
 `v2.jsonl` is built around the full dataset configuration, which discovers
