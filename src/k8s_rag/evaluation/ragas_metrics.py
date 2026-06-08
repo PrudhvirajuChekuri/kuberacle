@@ -56,7 +56,7 @@ class ContextPrecisionResult:
 def _build_llm(judge_model: str, gcp_project: str, gcp_location: str):
     """Build a LangChain LLM wrapper for use as a RAGAS judge.
 
-    Applies a sys.modules patch so ragas 0.4.x can import without error —
+    Applies a sys.modules patch so ragas 0.4.x can import without error -
     ragas imports ChatVertexAI from a langchain_community path that was
     removed in langchain-community 0.4.
 

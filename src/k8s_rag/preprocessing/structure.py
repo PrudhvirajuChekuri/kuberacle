@@ -267,7 +267,7 @@ def _build_sections(
                 end_line = next_heading["line"] - 1
                 break
         else:
-            # Last heading of this level — extends to the end
+            # Last heading of this level - extends to the end
             if idx + 1 < len(headings):
                 # But only if the next heading is deeper
                 end_line = total_lines - 1

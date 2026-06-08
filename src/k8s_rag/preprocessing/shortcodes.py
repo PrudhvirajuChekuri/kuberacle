@@ -399,7 +399,7 @@ def resolve_figures(content: str) -> str:
             parts.append(caption_match.group(1))
 
         if parts:
-            return "Figure: " + " — ".join(parts)
+            return "Figure: " + " - ".join(parts)
 
         alt_match = re.search(r'alt="([^"]*)"', attrs)
         if alt_match and alt_match.group(1).strip():

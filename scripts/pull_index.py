@@ -56,7 +56,7 @@ def _validate_manifest(manifest: dict, config) -> None:
 
     k8s_version = manifest.get("k8s_version", "unknown")
     if k8s_version == "unknown":
-        warnings.append("k8s_version unknown in manifest — index may be stale")
+        warnings.append("k8s_version unknown in manifest - index may be stale")
 
     for w in warnings:
         logger.warning("%s", w)
@@ -70,7 +70,7 @@ def _validate_manifest(manifest: dict, config) -> None:
 
 def main() -> None:
     logging.basicConfig(
-        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO,
     )
@@ -98,7 +98,7 @@ def main() -> None:
         _validate_manifest(manifest, config)
     else:
         raise SystemExit(
-            "No manifest found at index/manifest.json — index was published without validation. "
+            "No manifest found at index/manifest.json - index was published without validation. "
             "Run workflow_dispatch to rebuild and re-publish the index."
         )
 

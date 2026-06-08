@@ -88,7 +88,7 @@ def determine_exit_code(pass_gate: bool) -> int:
 def main() -> None:
     """Execute offline evaluation and write artifacts."""
     logging.basicConfig(
-        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.WARNING,
     )

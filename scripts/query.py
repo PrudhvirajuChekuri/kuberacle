@@ -37,7 +37,7 @@ def main() -> None:
     """Run retrieval and answer generation for one question."""
     args = parse_args()
     logging.basicConfig(
-        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.DEBUG if args.verbose else logging.WARNING,
     )

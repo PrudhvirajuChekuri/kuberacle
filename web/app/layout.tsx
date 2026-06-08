@@ -15,7 +15,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kuberacle — Kubernetes docs assistant",
+  title: "Kuberacle - Kubernetes docs assistant",
   description: "Grounded RAG answers with citations to the official Kubernetes docs",
 };
 

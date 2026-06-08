@@ -207,7 +207,7 @@ export function Message({ message }: { message: ChatMessage }) {
         {message.insufficientEvidence && !isAbstention && (
           <div className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            Couldn&apos;t verify sources for this answer — treat it as ungrounded.
+            Couldn&apos;t verify sources for this answer - treat it as ungrounded.
           </div>
         )}
 
