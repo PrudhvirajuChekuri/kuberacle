@@ -23,8 +23,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+api = [
+    "fastapi",
+    "uvicorn[standard]",
+]
 dev = [
     "pytest>=7.0",
+    "httpx",
+    "k8s-docs-rag[api]",
 ]
 
 [tool.setuptools.packages.find]
