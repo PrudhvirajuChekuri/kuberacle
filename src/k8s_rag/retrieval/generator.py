@@ -2,6 +2,7 @@
 
 import logging
 import re
+from collections.abc import Iterator
 from typing import Any
 
 from k8s_rag.ingestion.schemas import RetrievedChunk
@@ -9,7 +10,7 @@ from k8s_rag.ingestion.schemas import RetrievedChunk
 logger = logging.getLogger(__name__)
 
 
-_CITATION_INDEX = re.compile(r"\[(\d+)\]")
+_CITATION_GROUP = re.compile(r"\[([\d,\s]+)\]")
 
 
 def _build_context(chunks: list[RetrievedChunk]) -> str:
@@ -69,17 +70,18 @@ class VertexAIAnswerGenerator:
             )
         return self._client
 
-    def generate(self, question: str, chunks: list[RetrievedChunk]) -> str:
-        """Generate an answer grounded in retrieved chunks.
+    def _build_prompts(
+        self, question: str, chunks: list[RetrievedChunk]
+    ) -> tuple[str, str]:
+        """Assemble the system and user prompts for a question.
 
         Args:
             question: User question.
             chunks: Retrieved context chunks.
 
         Returns:
-            Generated answer text.
+            Tuple of ``(system_prompt, user_prompt)``.
         """
-        logger.debug("Generating answer from %d context chunks", len(chunks))
         context = _build_context(chunks)
         citation_rules = self.prompt_bundle.get("citation_rules", "")
         system_prompt = self.prompt_bundle.get(
@@ -93,8 +95,37 @@ class VertexAIAnswerGenerator:
         user_prompt = user_template.format(question=question, context=context)
         if citation_rules:
             user_prompt += f"\n\nCitation rules:\n{citation_rules}"
+        return system_prompt, user_prompt
 
+    def generate(self, question: str, chunks: list[RetrievedChunk]) -> str:
+        """Generate an answer grounded in retrieved chunks.
+
+        Args:
+            question: User question.
+            chunks: Retrieved context chunks.
+
+        Returns:
+            Generated answer text.
+        """
+        logger.debug("Generating answer from %d context chunks", len(chunks))
+        system_prompt, user_prompt = self._build_prompts(question, chunks)
         return self._generate_with_gemini(system_prompt, user_prompt)
+
+    def generate_stream(
+        self, question: str, chunks: list[RetrievedChunk]
+    ) -> Iterator[str]:
+        """Stream a grounded answer as incremental text deltas.
+
+        Args:
+            question: User question.
+            chunks: Retrieved context chunks.
+
+        Yields:
+            Non-empty text fragments in generation order.
+        """
+        logger.debug("Streaming answer from %d context chunks", len(chunks))
+        system_prompt, user_prompt = self._build_prompts(question, chunks)
+        yield from self._stream_with_gemini(system_prompt, user_prompt)
 
     def _generate_with_gemini(self, system_prompt: str, user_prompt: str) -> str:
         """Invoke Gemini model via the Gen AI SDK.
@@ -128,9 +159,45 @@ class VertexAIAnswerGenerator:
             return "INSUFFICIENT_EVIDENCE."
         return text.strip()
 
+    def _stream_with_gemini(
+        self, system_prompt: str, user_prompt: str
+    ) -> Iterator[str]:
+        """Stream a Gemini response as text deltas via the Gen AI SDK.
+
+        Args:
+            system_prompt: System instruction text.
+            user_prompt: User turn text.
+
+        Yields:
+            Non-empty text fragments in arrival order.
+        """
+        from google.genai import types
+
+        stream = self.client.models.generate_content_stream(
+            model=self.model_id,
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[types.Part(text=user_prompt)],
+                )
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=self.temperature,
+                max_output_tokens=self.max_tokens,
+            ),
+        )
+        for chunk in stream:
+            text = chunk.text
+            if text:
+                yield text
+
 
 def extract_citation_indices(answer: str) -> list[int]:
     """Extract ordered citation indices from answer text.
+
+    Handles both single markers (``[1]``) and grouped markers (``[1, 4]``),
+    parsing every index inside a bracket.
 
     Args:
         answer: Generated answer containing bracketed citation markers.
@@ -138,11 +205,15 @@ def extract_citation_indices(answer: str) -> list[int]:
     Returns:
         Ordered list of unique citation indices.
     """
-    indices = [int(match) for match in _CITATION_INDEX.findall(answer)]
     ordered_unique: list[int] = []
     seen: set[int] = set()
-    for idx in indices:
-        if idx not in seen:
-            seen.add(idx)
-            ordered_unique.append(idx)
+    for group in _CITATION_GROUP.findall(answer):
+        for token in group.split(","):
+            token = token.strip()
+            if not token.isdigit():
+                continue
+            idx = int(token)
+            if idx not in seen:
+                seen.add(idx)
+                ordered_unique.append(idx)
     return ordered_unique

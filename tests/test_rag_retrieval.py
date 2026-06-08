@@ -208,6 +208,11 @@ def test_extract_citation_indices_ordered_unique():
     assert extract_citation_indices("Fact [2] and [1], again [2].") == [2, 1]
 
 
+def test_extract_citation_indices_handles_grouped_markers():
+    """Citation parser should capture every index inside grouped brackets."""
+    assert extract_citation_indices("host [1, 4]. wrapper [2, 5]. unit [4].") == [1, 4, 2, 5]
+
+
 def test_qa_system_outputs_only_used_citations():
     """Citation list should include only indices used by answer."""
     retriever = SemanticRetriever(
@@ -238,8 +243,39 @@ class TwoChunkVectorStore:
         ]
 
 
-def test_qa_system_citations_exclude_low_score_chunks():
-    """Citations should only include chunks that pass min_evidence_score."""
+class ThreeChunkVectorStore:
+    """Returns three distinct chunks in a fixed order."""
+
+    def query(self, query_embedding, top_k):
+        del query_embedding, top_k
+        return [
+            RetrievedChunk("c1", "First chunk.", {"source_url": "u/1"}, score=0.9),
+            RetrievedChunk("c2", "Second chunk.", {"source_url": "u/2"}, score=0.8),
+            RetrievedChunk("c3", "Third chunk.", {"source_url": "u/3"}, score=0.7),
+        ]
+
+
+def test_qa_system_citation_index_matches_answer_markers():
+    """Citations should carry the original 1-based marker the answer used."""
+    retriever = SemanticRetriever(
+        embedder=FakeEmbedder(),
+        vector_store=ThreeChunkVectorStore(),
+        top_k=5,
+    )
+    generator = FixedAnswerGenerator("Point one [3] and point two [1].")
+    qa = RAGQASystem(retriever=retriever, generator=generator, strict_used_only=True)
+    result = qa.ask("Question?")
+
+    # Markers used: [3] then [1] -> citations preserve that order and index.
+    assert [(c.index, c.chunk_id) for c in result.citations] == [(3, "c3"), (1, "c1")]
+
+
+def test_qa_system_keeps_all_used_citations_when_one_clears_threshold():
+    """When at least one cited chunk clears the threshold, keep all of them.
+
+    The evidence score gates abstention only, so low-score chunks the answer
+    cites are retained (no dangling citation markers).
+    """
     retriever = SemanticRetriever(
         embedder=FakeEmbedder(),
         vector_store=TwoChunkVectorStore(),
@@ -254,8 +290,27 @@ def test_qa_system_citations_exclude_low_score_chunks():
         min_supporting_chunks=1,
     )
     result = qa.ask("Question?")
-    assert len(result.citations) == 1
-    assert result.citations[0].chunk_id == "high"
+    assert {c.chunk_id for c in result.citations} == {"high", "low"}
+
+
+def test_qa_system_abstains_when_no_used_citation_clears_threshold():
+    """When no cited chunk clears the threshold, abstain entirely."""
+    retriever = SemanticRetriever(
+        embedder=FakeEmbedder(),
+        vector_store=TwoChunkVectorStore(),
+        top_k=5,
+    )
+    generator = FixedAnswerGenerator("Answer [1] and [2].")
+    qa = RAGQASystem(
+        retriever=retriever,
+        generator=generator,
+        strict_used_only=True,
+        min_evidence_score=0.95,
+        min_supporting_chunks=1,
+    )
+    result = qa.ask("Question?")
+    assert result.answer.startswith("INSUFFICIENT_EVIDENCE")
+    assert result.citations == []
 
 
 def test_merge_hybrid_candidates_chunk_in_both_lists_scores_higher():
