@@ -1,10 +1,14 @@
-import type { ReactNode } from "react";
-import { AlertTriangle, Box, FileText, Layers, Search } from "lucide-react";
+"use client";
+
+import { useState, type MouseEvent, type ReactNode } from "react";
+import { AlertTriangle, FileText, Layers, Search } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { CitationCard } from "@/components/citation-card";
 import { CodeBlock } from "@/components/code-block";
+import { CopyButton } from "@/components/copy-button";
+import { Cube } from "@/components/cube-icon";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, Citation } from "@/lib/types";
 
@@ -48,7 +52,7 @@ const baseComponents: Components = {
       return <CodeBlock code={text} lang={lang} />;
     }
     return (
-      <code className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[0.86em] text-brand-dim">
+      <code className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[0.86em] text-brand-dim dark:text-[#9ec1ff]">
         {children}
       </code>
     );
@@ -59,15 +63,23 @@ const baseComponents: Components = {
 function CitationChip({
   href,
   citation,
+  onSelect,
   children,
 }: {
   href: string;
   citation?: Citation;
+  onSelect: () => void;
   children: ReactNode;
 }) {
+  const handleClick = (e: MouseEvent) => {
+    e.preventDefault();
+    onSelect();
+  };
+
   const chip = (
     <a
       href={href}
+      onClick={handleClick}
       className="mx-0.5 inline-flex h-4 min-w-[17px] items-center justify-center rounded-md bg-brand-soft px-1 align-super font-mono text-[10.5px] font-semibold text-primary no-underline transition-colors hover:bg-primary hover:text-white"
     >
       {children}
@@ -113,6 +125,8 @@ function ThinkingDots() {
 }
 
 export function Message({ message }: { message: ChatMessage }) {
+  const [activeCite, setActiveCite] = useState<number | null>(null);
+
   if (message.role === "user") {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-2 px-4 py-3">
@@ -127,6 +141,13 @@ export function Message({ message }: { message: ChatMessage }) {
   const showTyping = message.pending && message.content === "";
   const isAbstention = message.content.trim().startsWith("INSUFFICIENT_EVIDENCE");
 
+  const selectCite = (n: number) => {
+    setActiveCite(n);
+    document
+      .getElementById(`cite-${message.id}-${n}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
   const citationByIndex = new Map<number, Citation>(
     (message.citations ?? []).map((citation) => [citation.index, citation]),
   );
@@ -136,7 +157,7 @@ export function Message({ message }: { message: ChatMessage }) {
       if (href?.startsWith("#cite-")) {
         const n = Number(href.split("-").pop());
         return (
-          <CitationChip href={href} citation={citationByIndex.get(n)}>
+          <CitationChip href={href} citation={citationByIndex.get(n)} onSelect={() => selectCite(n)}>
             {children}
           </CitationChip>
         );
@@ -158,7 +179,7 @@ export function Message({ message }: { message: ChatMessage }) {
   return (
     <div className="flex items-start gap-3">
       <div className="mt-0.5 grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-primary text-white shadow-[0_4px_12px_-5px_var(--brand-line)]">
-        <Box className="h-4 w-4" />
+        <Cube className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
         {showTyping ? (
@@ -171,7 +192,7 @@ export function Message({ message }: { message: ChatMessage }) {
         ) : (
           <div
             className={cn(
-              "text-[15.5px] leading-[1.68] text-foreground",
+              "text-[15.5px] leading-[1.68] text-foreground break-words",
               message.error && "text-destructive",
             )}
           >
@@ -203,12 +224,18 @@ export function Message({ message }: { message: ChatMessage }) {
                 .map((citation) => (
                   <CitationCard
                     key={citation.chunk_id}
-                    index={citation.index}
                     citation={citation}
                     anchorId={`cite-${message.id}-${citation.index}`}
+                    active={activeCite === citation.index}
                   />
                 ))}
             </div>
+          </div>
+        )}
+
+        {!message.pending && !isAbstention && message.content && (
+          <div className="mt-5 flex justify-end">
+            <CopyButton text={message.content} label="Copy response" />
           </div>
         )}
       </div>

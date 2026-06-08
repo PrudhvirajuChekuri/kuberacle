@@ -1,6 +1,8 @@
-import { ArrowRight, Box } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { ChatInput } from "@/components/chat-input";
+import { Cube } from "@/components/cube-icon";
+import { K8S_VERSION } from "@/lib/constants";
 
 const SUGGESTIONS = [
   { tag: "concept", label: "What is a Pod?", q: "What is a Pod?" },
@@ -21,7 +23,7 @@ export function EmptyState({ onSend }: { onSend: (value: string) => void }) {
   return (
     <div className="mx-auto flex max-w-[660px] flex-col items-center px-6 pb-16 pt-[8vh] text-center">
       <div className="mb-7 grid h-[68px] w-[68px] place-items-center rounded-[18px] bg-[linear-gradient(150deg,var(--brand),color-mix(in_srgb,var(--brand)_65%,#000))] text-white shadow-[0_18px_48px_-18px_var(--brand-line)]">
-        <Box className="h-8 w-8" strokeWidth={1.5} />
+        <Cube className="h-8 w-8" strokeWidth={1.5} />
       </div>
       <h1 className="mb-3 text-[34px] font-bold tracking-tight">Ask the Kubernetes docs</h1>
       <p className="mb-7 text-base text-text-2">
@@ -54,7 +56,7 @@ export function EmptyState({ onSend }: { onSend: (value: string) => void }) {
         ))}
       </div>
       <div className="mt-7 flex items-center gap-3 font-mono text-xs text-text-3">
-        <span>Kubernetes v1.36</span>
+        <span>Kubernetes {K8S_VERSION}</span>
         <span className="h-[3px] w-[3px] rounded-full bg-text-3" />
         <span>citations on every answer</span>
       </div>

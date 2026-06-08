@@ -23,7 +23,7 @@ function toTurns(messages: ChatMessage[]) {
 }
 
 export function Chat() {
-  const { messages, isStreaming, send, stop } = useRagChat();
+  const { messages, isStreaming, send, stop, reset } = useRagChat();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,36 +34,40 @@ export function Chat() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <TopBar />
+      <TopBar onHome={reset} />
 
       {isEmpty ? (
-        <div className="flex-1 overflow-y-auto">
+        <div className="scroll-area flex-1 overflow-y-auto overflow-x-hidden">
           <EmptyState onSend={send} />
         </div>
       ) : (
-        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
-          <div className="flex-1 overflow-y-auto px-4 py-8">
-            <div className="flex flex-col gap-14">
-              {toTurns(messages).map((turn) => (
-                <div key={turn.user.id} className="flex flex-col gap-5">
-                  <Message message={turn.user} />
-                  {turn.assistant && <Message message={turn.assistant} />}
-                </div>
-              ))}
-              <div ref={bottomRef} />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="scroll-area flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="mx-auto w-full max-w-3xl px-4 py-8">
+              <div className="flex flex-col gap-14">
+                {toTurns(messages).map((turn) => (
+                  <div key={turn.user.id} className="flex flex-col gap-5">
+                    <Message message={turn.user} />
+                    {turn.assistant && <Message message={turn.assistant} />}
+                  </div>
+                ))}
+                <div ref={bottomRef} />
+              </div>
             </div>
           </div>
 
-          <div className="bg-[linear-gradient(to_top,var(--background)_60%,transparent)] px-4 pb-5 pt-3">
-            <ChatInput
-              onSend={send}
-              onStop={stop}
-              isStreaming={isStreaming}
-              placeholder="Ask a follow-up…"
-            />
-            <p className="mt-2 text-center text-[11px] text-text-3">
-              Answers may be incomplete. Always verify against the official docs.
-            </p>
+          <div className="bg-[linear-gradient(to_top,var(--background)_60%,transparent)]">
+            <div className="mx-auto w-full max-w-3xl px-4 pb-5 pt-3">
+              <ChatInput
+                onSend={send}
+                onStop={stop}
+                isStreaming={isStreaming}
+                placeholder="Ask a follow-up…"
+              />
+              <p className="mt-2 text-center text-[11px] text-text-3">
+                Answers may be incomplete. Always verify against the official docs.
+              </p>
+            </div>
           </div>
         </div>
       )}

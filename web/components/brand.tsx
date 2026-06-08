@@ -1,13 +1,18 @@
-import { Box } from "lucide-react";
+import { Cube } from "@/components/cube-icon";
 
-/** Kuberacle wordmark + logo mark for the top bar. */
-export function Brand() {
+/** Kuberacle wordmark + logo mark; clicking it returns to the start screen. */
+export function Brand({ onHome }: { onHome?: () => void }) {
   return (
-    <div className="flex items-center gap-3">
+    <button
+      type="button"
+      onClick={onHome}
+      aria-label="Back to start"
+      className="flex items-center gap-3 rounded-lg transition-opacity hover:opacity-80"
+    >
       <div className="grid h-9 w-9 place-items-center rounded-[9px] bg-primary text-white shadow-[0_4px_14px_-4px_var(--brand-line)]">
-        <Box className="h-5 w-5" strokeWidth={1.6} />
+        <Cube className="h-5 w-5" strokeWidth={1.6} />
       </div>
-      <div className="flex flex-col leading-none">
+      <div className="flex flex-col items-start leading-none">
         <span className="text-base font-bold tracking-tight">
           kube<span className="text-primary">racle</span>
         </span>
@@ -15,6 +20,6 @@ export function Brand() {
           kubernetes docs assistant
         </span>
       </div>
-    </div>
+    </button>
   );
 }

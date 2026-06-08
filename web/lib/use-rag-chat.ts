@@ -85,5 +85,12 @@ export function useRagChat() {
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
-  return { messages, isStreaming, send, stop };
+  const reset = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setMessages([]);
+    setIsStreaming(false);
+  }, []);
+
+  return { messages, isStreaming, send, stop, reset };
 }
