@@ -157,8 +157,21 @@ The full stack (API + web UI) runs in two containers via Docker Compose. The Chr
 ### Prerequisites
 
 - Docker with Compose v2 (on WSL, enable Docker Desktop's WSL integration)
+- A GCP project with `aiplatform.googleapis.com` and `discoveryengine.googleapis.com` enabled (queries call these at runtime and consume credits)
 - ADC configured: `gcloud auth application-default login`
 - A `.env` file in the project root with `GCP_PROJECT` and `GCP_LOCATION`
+
+### Get the index
+
+The Chroma index is not stored in the repository. Download the prebuilt index bundle and extract it from the project root before building:
+
+```bash
+curl -L -o chroma-index.tar.gz \
+  https://github.com/PrudhvirajuChekuri/k8s-docs-rag/releases/latest/download/chroma-index.tar.gz
+tar -xzf chroma-index.tar.gz        # restores data/vector/chroma_gemini and data/k8s_version.txt
+```
+
+The bundle contains the vector store (`data/vector/chroma_gemini`) and the corpus version file (`data/k8s_version.txt`), both of which the image build reads. Alternatively, build the index yourself with the pipeline steps under [Run RAG Pipeline](#run-rag-pipeline).
 
 ### Run
 

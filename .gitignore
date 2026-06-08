@@ -2,6 +2,7 @@
 .env
 
 # Generated output
+chroma-index.tar.gz
 data/raw/
 data/examples/
 data/includes/
