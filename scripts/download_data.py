@@ -78,7 +78,7 @@ def fetch_file(url: str, quiet: bool = False) -> str | None:
         except URLError as e:
             if attempt == retries:
                 log = logger.debug if quiet else logger.warning
-                log("Network error: %s — %s", e.reason, url)
+                log("Network error: %s - %s", e.reason, url)
                 return None
             sleep_seconds = 2 ** (attempt - 1)
             logger.warning(
@@ -373,7 +373,7 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(
-        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO,
     )

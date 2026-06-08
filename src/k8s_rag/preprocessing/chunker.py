@@ -284,7 +284,7 @@ def _split_at_paragraphs(
             split_points.append(i)
 
     if not split_points:
-        # No safe split points — return as-is even if oversized
+        # No safe split points - return as-is even if oversized
         return [text]
 
     # Greedily accumulate paragraphs until adding more would exceed target.
@@ -299,7 +299,7 @@ def _split_at_paragraphs(
         if estimate_tokens(candidate) <= target_tokens:
             last_safe_split = sp
         else:
-            # Adding more would exceed target — split at last safe point
+            # Adding more would exceed target - split at last safe point
             if last_safe_split is not None:
                 chunk_text = "\n".join(lines[current_start:last_safe_split])
                 if chunk_text.strip():
@@ -311,7 +311,7 @@ def _split_at_paragraphs(
                 if estimate_tokens(new_candidate) <= target_tokens:
                     last_safe_split = sp
             else:
-                # Very first paragraph already exceeds target — emit it
+                # Very first paragraph already exceeds target - emit it
                 if candidate.strip():
                     chunks.append(candidate)
                 current_start = sp + 1
@@ -338,7 +338,7 @@ def _split_at_paragraphs(
                 pending_heading = None
             merged.append(chunk)
     if pending_heading is not None:
-        # Trailing heading with no following content — attach to last chunk
+        # Trailing heading with no following content - attach to last chunk
         if merged:
             merged[-1] = f"{merged[-1]}\n\n{pending_heading}"
         else:
@@ -434,7 +434,7 @@ def _collect_content_flags(raw_content: str) -> tuple[bool, list[str], bool]:
         elif "|" in stripped and not stripped.startswith(">"):
             has_table = True
 
-    # Fence open at chunk boundary — still classify what we have so far
+    # Fence open at chunk boundary - still classify what we have so far
     if in_fence and fence_content:
         code_types.add(classify_code_block(lang, "\n".join(fence_content)))
 
@@ -542,7 +542,7 @@ def _chunk_node(
     if node["children"]:
         # Node's own content (between heading and first child)
         own_text = _get_own_content(lines, node)
-        # Require actual body content below the heading line — the heading
+        # Require actual body content below the heading line - the heading
         # itself doesn't count, so a section with no prose before its first
         # child produces no chunk here (children are still recursed into).
         own_body = any(
@@ -563,7 +563,7 @@ def _chunk_node(
                     doc_metadata=node_metadata,
                 ))
             else:
-                # Own content is too large — split at paragraphs
+                # Own content is too large - split at paragraphs
                 parts = _split_at_paragraphs(
                     own_text,
                     node["start_line"],
@@ -594,7 +594,7 @@ def _chunk_node(
                 hard_cap_tokens=hard_cap_tokens,
             ))
     else:
-        # Leaf node that's too big — split at paragraphs
+        # Leaf node that's too big - split at paragraphs
         parts = _split_at_paragraphs(
             full_text,
             node["start_line"],

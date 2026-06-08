@@ -117,7 +117,7 @@ def process_page(
     # Stage 3: Strip "What's next"
     resolved = strip_whatsnext(resolved)
 
-    # Stage 4: Links — resolve relative to absolute, extract cross-references,
+    # Stage 4: Links - resolve relative to absolute, extract cross-references,
     # then strip markdown link syntax to plain text
     resolved = process_links(resolved)
     page_cross_references = extract_cross_references(resolved)
@@ -137,7 +137,7 @@ def process_page(
         chunk_kwargs["hard_cap_tokens"] = hard_cap_tokens
     chunks = chunk_document(resolved, structure, metadata, **chunk_kwargs)
 
-    # Stage 8: Post-processing — enrich chunks with page-level metadata
+    # Stage 8: Post-processing - enrich chunks with page-level metadata
     description = metadata.get("description", "").strip()
     total_chunks = len(chunks)
     for i, chunk in enumerate(chunks):

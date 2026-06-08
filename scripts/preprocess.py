@@ -56,7 +56,7 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(
-        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.WARNING,
     )

@@ -26,14 +26,7 @@ from k8s_rag.evaluation.report import (
 )
 from k8s_rag.evaluation.runner import EvaluationThresholds, evaluate_dataset
 from k8s_rag.ingestion.config import load_rag_config
-from k8s_rag.ingestion.embedder import VertexAIEmbedder
-from k8s_rag.ingestion.vector_store import ChromaVectorStore
-from k8s_rag.retrieval.bm25 import BM25Retriever
-from k8s_rag.retrieval.generator import VertexAIAnswerGenerator
-from k8s_rag.retrieval.prompts import load_prompt_bundle
-from k8s_rag.retrieval.qa import RAGQASystem
-from k8s_rag.retrieval.reranker import DiscoveryEngineReranker
-from k8s_rag.retrieval.retriever import HybridRetriever, SemanticRetriever
+from k8s_rag.retrieval.factory import build_qa_system
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -87,64 +80,6 @@ def resolve_path(path_like: str) -> Path:
     return PROJECT_ROOT / path
 
 
-def build_qa_system(config):
-    """Build hybrid QA system using runtime config."""
-    embedder = VertexAIEmbedder(
-        model_id=config.embedding_model_id,
-        gcp_project=config.gcp_project,
-        gcp_location=config.gcp_location,
-        output_dimensionality=config.embedding_output_dimensionality,
-    )
-    vector_store = ChromaVectorStore(
-        collection_name=config.collection_name,
-        persist_directory=str(PROJECT_ROOT / config.persist_directory),
-    )
-    semantic = SemanticRetriever(
-        embedder=embedder,
-        vector_store=vector_store,
-        top_k=config.semantic_top_k,
-    )
-    all_chunks = vector_store.fetch_all_chunks()
-    lexical = BM25Retriever(chunks=all_chunks, top_k=config.lexical_top_k)
-    reranker = DiscoveryEngineReranker(
-        gcp_project=config.gcp_project,
-        ranking_config=config.reranker_ranking_config,
-        model=config.reranker_model,
-        enabled=config.reranker_enabled,
-    )
-    retriever = HybridRetriever(
-        semantic_retriever=semantic,
-        bm25_retriever=lexical,
-        reranker=reranker,
-        semantic_top_k=config.semantic_top_k,
-        lexical_top_k=config.lexical_top_k,
-        merged_top_k=config.merged_top_k,
-        final_top_k=config.final_top_k,
-        semantic_weight=config.hybrid_weight_semantic,
-        lexical_weight=config.hybrid_weight_lexical,
-    )
-    prompt_bundle = load_prompt_bundle(
-        base_dir=str(PROJECT_ROOT / config.prompt_directory),
-        version=config.prompt_version,
-    )
-    generator = VertexAIAnswerGenerator(
-        model_id=config.generation_model_id,
-        gcp_project=config.gcp_project,
-        gcp_location=config.gcp_location,
-        temperature=config.temperature,
-        max_tokens=config.max_tokens,
-        prompt_bundle=prompt_bundle,
-    )
-    return RAGQASystem(
-        retriever=retriever,
-        generator=generator,
-        min_evidence_score=config.min_evidence_score,
-        min_supporting_chunks=config.min_supporting_chunks,
-        strict_used_only=config.citation_strict_used_only,
-        deduplicate_citations=config.citation_deduplicate,
-    )
-
-
 def determine_exit_code(pass_gate: bool) -> int:
     """Return process exit code for CI usage."""
     return 0 if pass_gate else 1
@@ -153,7 +88,7 @@ def determine_exit_code(pass_gate: bool) -> int:
 def main() -> None:
     """Execute offline evaluation and write artifacts."""
     logging.basicConfig(
-        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.WARNING,
     )
@@ -175,7 +110,7 @@ def main() -> None:
         dataset = dataset[: args.limit]
     if not dataset:
         raise SystemExit("No evaluation cases selected after applying filters.")
-    qa_system = build_qa_system(config)
+    qa_system = build_qa_system(config, PROJECT_ROOT)
     thresholds = EvaluationThresholds(
         retrieval_recall_at_k=config.eval_retrieval_recall_at_k_threshold,
         mrr=config.eval_mrr_threshold,

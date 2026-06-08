@@ -1,0 +1,60 @@
+"""Tests for the RAG QA system factory."""
+
+from pathlib import Path
+
+import pytest
+
+from k8s_rag.ingestion.config import load_rag_config
+from k8s_rag.ingestion.embedder import VertexAIEmbedder
+from k8s_rag.ingestion.vector_store import ChromaVectorStore
+from k8s_rag.retrieval.factory import build_qa_system
+from k8s_rag.retrieval.generator import VertexAIAnswerGenerator
+from k8s_rag.retrieval.qa import RAGQASystem
+from k8s_rag.retrieval.retriever import HybridRetriever
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = PROJECT_ROOT / "configs" / "rag.yaml"
+
+
+@pytest.fixture
+def config(monkeypatch):
+    """Load the real config with stubbed GCP env vars."""
+    monkeypatch.setenv("GCP_PROJECT", "test-project")
+    monkeypatch.setenv("GCP_LOCATION", "us-central1")
+    return load_rag_config(CONFIG_PATH)
+
+
+@pytest.fixture(autouse=True)
+def stub_chroma(monkeypatch):
+    """Avoid touching ChromaDB/disk when the factory builds the BM25 index."""
+    monkeypatch.setattr(ChromaVectorStore, "fetch_all_chunks", lambda self: [])
+
+
+def test_build_qa_system_returns_wired_system(config):
+    """Factory should return a RAGQASystem with hybrid retriever and generator."""
+    qa = build_qa_system(config, PROJECT_ROOT)
+
+    assert isinstance(qa, RAGQASystem)
+    assert isinstance(qa.retriever, HybridRetriever)
+    assert isinstance(qa.generator, VertexAIAnswerGenerator)
+    assert isinstance(qa.retriever.semantic_retriever.embedder, VertexAIEmbedder)
+
+
+def test_build_qa_system_propagates_config(config):
+    """Citation and evidence settings should flow from config into the system."""
+    qa = build_qa_system(config, PROJECT_ROOT)
+
+    assert qa.min_evidence_score == config.min_evidence_score
+    assert qa.min_supporting_chunks == config.min_supporting_chunks
+    assert qa.strict_used_only == config.citation_strict_used_only
+    assert qa.deduplicate_citations == config.citation_deduplicate
+    assert qa.generator.model_id == config.generation_model_id
+
+
+def test_build_qa_system_resolves_persist_directory(config):
+    """Vector store persist path should be resolved under the project root."""
+    qa = build_qa_system(config, PROJECT_ROOT)
+    vector_store = qa.retriever.semantic_retriever.vector_store
+
+    assert vector_store.persist_directory == str(PROJECT_ROOT / config.persist_directory)

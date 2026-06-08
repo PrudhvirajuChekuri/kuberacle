@@ -11,6 +11,11 @@ rank-bm25
 
 # Dev
 pytest>=7.0
+httpx
+
+# API (optional)
+fastapi
+uvicorn[standard]
 
 # Eval (optional)
 datasets

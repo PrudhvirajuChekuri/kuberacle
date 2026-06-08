@@ -4,7 +4,7 @@ from k8s_rag.ingestion.schemas import RetrievedChunk
 from k8s_rag.retrieval.bm25 import BM25Retriever
 from k8s_rag.retrieval.generator import VertexAIAnswerGenerator, extract_citation_indices
 from k8s_rag.retrieval.hybrid import merge_hybrid_candidates
-from k8s_rag.retrieval.qa import RAGQASystem
+from k8s_rag.retrieval.qa import RAGQASystem, _chunk_title, _make_snippet
 from k8s_rag.retrieval.reranker import DiscoveryEngineReranker
 from k8s_rag.retrieval.retriever import HybridRetriever, SemanticRetriever
 
@@ -208,6 +208,11 @@ def test_extract_citation_indices_ordered_unique():
     assert extract_citation_indices("Fact [2] and [1], again [2].") == [2, 1]
 
 
+def test_extract_citation_indices_handles_grouped_markers():
+    """Citation parser should capture every index inside grouped brackets."""
+    assert extract_citation_indices("host [1, 4]. wrapper [2, 5]. unit [4].") == [1, 4, 2, 5]
+
+
 def test_qa_system_outputs_only_used_citations():
     """Citation list should include only indices used by answer."""
     retriever = SemanticRetriever(
@@ -238,8 +243,39 @@ class TwoChunkVectorStore:
         ]
 
 
-def test_qa_system_citations_exclude_low_score_chunks():
-    """Citations should only include chunks that pass min_evidence_score."""
+class ThreeChunkVectorStore:
+    """Returns three distinct chunks in a fixed order."""
+
+    def query(self, query_embedding, top_k):
+        del query_embedding, top_k
+        return [
+            RetrievedChunk("c1", "First chunk.", {"source_url": "u/1"}, score=0.9),
+            RetrievedChunk("c2", "Second chunk.", {"source_url": "u/2"}, score=0.8),
+            RetrievedChunk("c3", "Third chunk.", {"source_url": "u/3"}, score=0.7),
+        ]
+
+
+def test_qa_system_citation_index_matches_answer_markers():
+    """Citations should carry the original 1-based marker the answer used."""
+    retriever = SemanticRetriever(
+        embedder=FakeEmbedder(),
+        vector_store=ThreeChunkVectorStore(),
+        top_k=5,
+    )
+    generator = FixedAnswerGenerator("Point one [3] and point two [1].")
+    qa = RAGQASystem(retriever=retriever, generator=generator, strict_used_only=True)
+    result = qa.ask("Question?")
+
+    # Markers used: [3] then [1] -> citations preserve that order and index.
+    assert [(c.index, c.chunk_id) for c in result.citations] == [(3, "c3"), (1, "c1")]
+
+
+def test_qa_system_keeps_all_used_citations_when_one_clears_threshold():
+    """When at least one cited chunk clears the threshold, keep all of them.
+
+    The evidence score gates abstention only, so low-score chunks the answer
+    cites are retained (no dangling citation markers).
+    """
     retriever = SemanticRetriever(
         embedder=FakeEmbedder(),
         vector_store=TwoChunkVectorStore(),
@@ -254,8 +290,27 @@ def test_qa_system_citations_exclude_low_score_chunks():
         min_supporting_chunks=1,
     )
     result = qa.ask("Question?")
-    assert len(result.citations) == 1
-    assert result.citations[0].chunk_id == "high"
+    assert {c.chunk_id for c in result.citations} == {"high", "low"}
+
+
+def test_qa_system_abstains_when_no_used_citation_clears_threshold():
+    """When no cited chunk clears the threshold, abstain entirely."""
+    retriever = SemanticRetriever(
+        embedder=FakeEmbedder(),
+        vector_store=TwoChunkVectorStore(),
+        top_k=5,
+    )
+    generator = FixedAnswerGenerator("Answer [1] and [2].")
+    qa = RAGQASystem(
+        retriever=retriever,
+        generator=generator,
+        strict_used_only=True,
+        min_evidence_score=0.95,
+        min_supporting_chunks=1,
+    )
+    result = qa.ask("Question?")
+    assert result.answer.startswith("INSUFFICIENT_EVIDENCE")
+    assert result.citations == []
 
 
 def test_merge_hybrid_candidates_chunk_in_both_lists_scores_higher():
@@ -453,3 +508,61 @@ def test_reranker_deduplicates_repeated_api_ids(monkeypatch):
     results = reranker.rerank("query", chunks, top_k=5)
     assert len(results) == 1
     assert results[0].chunk_id == "a"
+
+
+def test_make_snippet_strips_markdown_headings():
+    """Leading Markdown heading markers should be removed from snippets."""
+    snippet = _make_snippet("## What is a Pod?\n\nA Pod is the smallest unit.")
+    assert not snippet.startswith("#")
+    assert snippet.startswith("What is a Pod?")
+    assert "A Pod is the smallest unit." in snippet
+
+
+def test_make_snippet_strips_bracket_marker_and_bullets():
+    """Leading [Heading] markers and list bullets should be removed."""
+    snippet = _make_snippet("[Concepts]\n\n- Access services through public IPs.")
+    assert snippet == "Access services through public IPs."
+
+
+def test_make_snippet_truncates_with_ellipsis():
+    """Snippets longer than the limit are truncated with an ellipsis."""
+    snippet = _make_snippet("word " * 100, limit=40)
+    assert len(snippet) <= 41
+    assert snippet.endswith("…")
+
+
+def test_make_snippet_drops_leading_line_matching_title():
+    """A leading heading line equal to the title is skipped to avoid repetition."""
+    content = "[Pods > What is a Pod?]\n\n## What is a Pod?\n\nThe shared context of a Pod."
+    snippet = _make_snippet(content, title="What is a Pod?")
+    assert snippet == "The shared context of a Pod."
+
+
+def test_make_snippet_title_match_is_case_insensitive():
+    """The leading-title match ignores case."""
+    snippet = _make_snippet("## WORKLOADS\n\nA workload is an application.", title="Workloads")
+    assert snippet == "A workload is an application."
+
+
+def test_make_snippet_keeps_body_when_title_differs():
+    """A leading heading unrelated to the title is preserved."""
+    snippet = _make_snippet("## What is a Pod?\n\nA Pod is the smallest unit.", title="Pods")
+    assert snippet.startswith("What is a Pod?")
+
+
+def test_chunk_title_prefers_deepest_heading():
+    """Title should be the chunk's own section heading, not the page title."""
+    meta = {"title": "Pods", "heading_hierarchy": ["Pods", "What is a Pod?"]}
+    assert _chunk_title(meta) == "What is a Pod?"
+
+
+def test_chunk_title_handles_json_encoded_hierarchy():
+    """A JSON-encoded heading_hierarchy string should be decoded."""
+    meta = {"title": "Pods", "heading_hierarchy": '["Pods", "Pods with multiple containers"]'}
+    assert _chunk_title(meta) == "Pods with multiple containers"
+
+
+def test_chunk_title_falls_back_to_page_title():
+    """Without a heading hierarchy, the page title is used."""
+    assert _chunk_title({"title": "Pods"}) == "Pods"
+    assert _chunk_title({"title": "Pods", "heading_hierarchy": []}) == "Pods"

@@ -50,7 +50,7 @@ def test_evaluate_dataset_passes_gate_for_good_outputs():
     outputs = {
         "What is a Pod?": QAResult(
             answer="A Pod is a Kubernetes unit [1].",
-            citations=[Citation(chunk_id="c1", source_url="https://example/c1", score=0.9)],
+            citations=[Citation(index=1, chunk_id="c1", source_url="https://example/c1", score=0.9)],
             retrieved_chunks=[_chunk("c1")],
         ),
         "Unknown case?": QAResult(
