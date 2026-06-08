@@ -1,7 +1,9 @@
 """Question-answer orchestration with citations."""
 
+import json
 import logging
-from collections.abc import Iterator
+import re
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,10 +22,38 @@ _UNVERIFIED_ANSWER = (
 )
 
 
+def _chunk_title(metadata: Mapping[str, Any]) -> str:
+    """Pick the most specific heading for a chunk, for source previews.
+
+    Prefers the deepest entry of ``heading_hierarchy`` (the chunk's own section,
+    e.g. "What is a Pod?") so chunks from the same page are distinguishable,
+    falling back to the page ``title``. Handles ``heading_hierarchy`` stored as a
+    list or as a JSON-encoded string.
+
+    Args:
+        metadata: Chunk metadata map.
+
+    Returns:
+        The section heading, or the page title if no hierarchy is present.
+    """
+    hierarchy = metadata.get("heading_hierarchy")
+    if isinstance(hierarchy, str):
+        try:
+            hierarchy = json.loads(hierarchy)
+        except (ValueError, TypeError):
+            hierarchy = None
+    if isinstance(hierarchy, (list, tuple)) and hierarchy:
+        last = str(hierarchy[-1]).strip()
+        if last:
+            return last
+    return str(metadata.get("title", ""))
+
+
 def _make_snippet(content: str, limit: int = 200) -> str:
     """Build a short, single-line preview snippet from chunk content.
 
-    Collapses whitespace, drops a leading ``[Heading]`` marker if present, and
+    Strips leading Markdown markers (headings, blockquotes, list bullets) and a
+    leading ``[Heading]`` marker line by line, collapses whitespace, and
     truncates to ``limit`` characters with an ellipsis.
 
     Args:
@@ -33,11 +63,16 @@ def _make_snippet(content: str, limit: int = 200) -> str:
     Returns:
         A cleaned, truncated preview string.
     """
-    text = " ".join(content.split())
-    if text.startswith("["):
-        end = text.find("]")
-        if end != -1:
-            text = text[end + 1 :].strip()
+    cleaned: list[str] = []
+    for line in content.splitlines():
+        stripped = re.sub(r"^\s*[#>*+\-]+\s+", "", line).strip()
+        if stripped.startswith("["):
+            end = stripped.find("]")
+            if end != -1:
+                stripped = stripped[end + 1 :].strip()
+        if stripped:
+            cleaned.append(stripped)
+    text = " ".join(" ".join(cleaned).split())
     if len(text) > limit:
         text = text[:limit].rstrip() + "…"
     return text
@@ -229,7 +264,7 @@ class RAGQASystem:
                 chunk_id=chunk.chunk_id,
                 source_url=str(chunk.metadata.get("source_url", "unknown")),
                 score=chunk.score,
-                title=str(chunk.metadata.get("title", "")),
+                title=_chunk_title(chunk.metadata),
                 snippet=_make_snippet(chunk.content),
             )
             for idx, chunk in selected

@@ -4,7 +4,7 @@ from k8s_rag.ingestion.schemas import RetrievedChunk
 from k8s_rag.retrieval.bm25 import BM25Retriever
 from k8s_rag.retrieval.generator import VertexAIAnswerGenerator, extract_citation_indices
 from k8s_rag.retrieval.hybrid import merge_hybrid_candidates
-from k8s_rag.retrieval.qa import RAGQASystem
+from k8s_rag.retrieval.qa import RAGQASystem, _chunk_title, _make_snippet
 from k8s_rag.retrieval.reranker import DiscoveryEngineReranker
 from k8s_rag.retrieval.retriever import HybridRetriever, SemanticRetriever
 
@@ -508,3 +508,42 @@ def test_reranker_deduplicates_repeated_api_ids(monkeypatch):
     results = reranker.rerank("query", chunks, top_k=5)
     assert len(results) == 1
     assert results[0].chunk_id == "a"
+
+
+def test_make_snippet_strips_markdown_headings():
+    """Leading Markdown heading markers should be removed from snippets."""
+    snippet = _make_snippet("## What is a Pod?\n\nA Pod is the smallest unit.")
+    assert not snippet.startswith("#")
+    assert snippet.startswith("What is a Pod?")
+    assert "A Pod is the smallest unit." in snippet
+
+
+def test_make_snippet_strips_bracket_marker_and_bullets():
+    """Leading [Heading] markers and list bullets should be removed."""
+    snippet = _make_snippet("[Concepts]\n\n- Access services through public IPs.")
+    assert snippet == "Access services through public IPs."
+
+
+def test_make_snippet_truncates_with_ellipsis():
+    """Snippets longer than the limit are truncated with an ellipsis."""
+    snippet = _make_snippet("word " * 100, limit=40)
+    assert len(snippet) <= 41
+    assert snippet.endswith("…")
+
+
+def test_chunk_title_prefers_deepest_heading():
+    """Title should be the chunk's own section heading, not the page title."""
+    meta = {"title": "Pods", "heading_hierarchy": ["Pods", "What is a Pod?"]}
+    assert _chunk_title(meta) == "What is a Pod?"
+
+
+def test_chunk_title_handles_json_encoded_hierarchy():
+    """A JSON-encoded heading_hierarchy string should be decoded."""
+    meta = {"title": "Pods", "heading_hierarchy": '["Pods", "Pods with multiple containers"]'}
+    assert _chunk_title(meta) == "Pods with multiple containers"
+
+
+def test_chunk_title_falls_back_to_page_title():
+    """Without a heading hierarchy, the page title is used."""
+    assert _chunk_title({"title": "Pods"}) == "Pods"
+    assert _chunk_title({"title": "Pods", "heading_hierarchy": []}) == "Pods"
