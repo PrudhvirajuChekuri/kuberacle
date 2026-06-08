@@ -150,6 +150,33 @@ The frontend proxies requests to the backend via `RAG_API_URL` (defaults to `htt
 
 **Stack:** Next.js (App Router) + TypeScript, Tailwind CSS + shadcn/ui, `react-markdown`. A custom hook consumes the SSE stream; clicking an inline `[n]` marker scrolls to and highlights its citation card, hovering one shows a source preview, and an "ungrounded" notice is shown when the answer could not be verified.
 
+## Run with Docker
+
+The full stack (API + web UI) runs in two containers via Docker Compose. The Chroma index is baked into the API image, so no ingestion is needed to run it. The API still calls GCP at runtime (embeddings, generation, reranking), so your local ADC is mounted into the container read-only.
+
+### Prerequisites
+
+- Docker with Compose v2 (on WSL, enable Docker Desktop's WSL integration)
+- ADC configured: `gcloud auth application-default login`
+- A `.env` file in the project root with `GCP_PROJECT` and `GCP_LOCATION`
+
+### Run
+
+```bash
+docker compose up        # add -d to run detached
+```
+
+- Web UI: http://localhost:3000
+- API: http://localhost:8000 (`GET /health` returns `{"status": "ok"}`)
+
+Stop and remove the containers:
+
+```bash
+docker compose down
+```
+
+The web container reaches the API over the Compose network via `RAG_API_URL=http://api:8000`. Credentials are provided only at runtime through a read-only volume mount and are never copied into the image. If the single-file ADC mount misbehaves, `docker-compose.yml` documents a whole-directory fallback.
+
 ## Evaluation Gates
 
 The smoke eval runs on every pull request. The full benchmark can be triggered manually via `workflow_dispatch` in GitHub Actions.
