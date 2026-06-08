@@ -8,7 +8,7 @@ Ask questions about Kubernetes and get grounded answers with citations to the of
 
 🚧 **In Development**
 
-The full RAG pipeline is implemented and running on GCP. Preprocessing, ingestion, hybrid retrieval, reranking, cited answer generation, and deterministic evaluation gates are all in place with CI on pull requests.
+The full RAG pipeline is implemented and running on GCP. Preprocessing, ingestion, hybrid retrieval, reranking, cited answer generation, and deterministic evaluation gates are all in place with CI on pull requests. A streaming FastAPI service and a Next.js web UI sit on top of the pipeline (see [Run the API](#run-the-api) and [Web UI](#web-ui)).
 
 ## Architecture
 
@@ -104,6 +104,51 @@ GCP_LOCATION=us-central1
 The query script prints the grounded answer and a citation list with `source_url` and `chunk_id`.
 
 The evaluation script writes JSON and markdown artifacts under `artifacts/evals/` and returns a non-zero exit code if any quality gate fails.
+
+## Run the API
+
+A FastAPI service streams grounded answers over Server-Sent Events. The pipeline is built once at startup and reused across requests.
+
+```bash
+pip install -e ".[api]"
+python scripts/serve.py            # http://127.0.0.1:8000  (add --reload for dev)
+```
+
+Query it (stream tokens then a final citations event):
+
+```bash
+curl -N -X POST http://127.0.0.1:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is a Pod?"}'
+```
+
+The stream emits these SSE events:
+
+```
+event: token   data: {"text": "..."}                              # repeated, live
+event: final   data: {"citations": [...], "insufficient_evidence": false}
+event: error   data: {"message": "..."}
+```
+
+`insufficient_evidence` is `true` when no citations could be validated for the streamed answer. A `GET /health` endpoint returns `{"status": "ok"}` without invoking the model.
+
+## Web UI
+
+A Next.js chat interface (`web/`) streams answers token-by-token from the API and renders citations as clickable source cards. Run both processes locally:
+
+```bash
+# Terminal 1 — backend
+python scripts/serve.py
+
+# Terminal 2 — frontend
+cd web
+npm install        # first time only
+npm run dev        # http://localhost:3000
+```
+
+The frontend proxies requests to the backend via `RAG_API_URL` (defaults to `http://127.0.0.1:8000`, set in `web/.env.local`).
+
+**Stack:** Next.js (App Router) + TypeScript, Tailwind CSS + shadcn/ui, `react-markdown`. A custom hook consumes the SSE stream; inline `[n]` markers link to their matching citation card, and an "ungrounded" notice is shown when the answer could not be verified.
 
 ## Evaluation Gates
 
