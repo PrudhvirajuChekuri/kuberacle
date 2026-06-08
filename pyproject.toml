@@ -17,9 +17,6 @@ dependencies = [
     "python-dotenv",
     "chromadb",
     "rank-bm25",
-    "datasets",
-    "ragas",
-    "langchain-google-genai",
 ]
 
 [project.optional-dependencies]
@@ -27,10 +24,16 @@ api = [
     "fastapi",
     "uvicorn[standard]",
 ]
+eval = [
+    "datasets",
+    "ragas",
+    "langchain-google-genai",
+]
 dev = [
     "pytest>=7.0",
     "httpx",
     "k8s-docs-rag[api]",
+    "k8s-docs-rag[eval]",
 ]
 
 [tool.setuptools.packages.find]

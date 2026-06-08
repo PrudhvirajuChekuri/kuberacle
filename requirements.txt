@@ -20,3 +20,4 @@ uvicorn[standard]
 # Eval (optional)
 datasets
 ragas
+langchain-google-genai
