@@ -8,7 +8,7 @@ Ask questions about Kubernetes and get grounded answers with citations to the of
 
 🚧 **In Development**
 
-The full RAG pipeline is implemented and running on GCP. Preprocessing, ingestion, hybrid retrieval, reranking, cited answer generation, and deterministic evaluation gates are all in place with CI on pull requests. A streaming FastAPI service and a Next.js web UI sit on top of the pipeline (see [Run the API](#run-the-api) and [Web UI](#web-ui)).
+The full RAG pipeline is implemented and running on GCP. Preprocessing, ingestion, hybrid retrieval, reranking, cited answer generation, and deterministic evaluation gates are all in place with CI on pull requests. A streaming FastAPI service and a Next.js web UI sit on top of the pipeline (see [Run the API](#run-the-api) and [Web UI](#web-ui)), and the whole stack runs in containers via Docker Compose (see [Run with Docker](#run-with-docker)).
 
 ## Architecture
 
