@@ -531,6 +531,25 @@ def test_make_snippet_truncates_with_ellipsis():
     assert snippet.endswith("…")
 
 
+def test_make_snippet_drops_leading_line_matching_title():
+    """A leading heading line equal to the title is skipped to avoid repetition."""
+    content = "[Pods > What is a Pod?]\n\n## What is a Pod?\n\nThe shared context of a Pod."
+    snippet = _make_snippet(content, title="What is a Pod?")
+    assert snippet == "The shared context of a Pod."
+
+
+def test_make_snippet_title_match_is_case_insensitive():
+    """The leading-title match ignores case."""
+    snippet = _make_snippet("## WORKLOADS\n\nA workload is an application.", title="Workloads")
+    assert snippet == "A workload is an application."
+
+
+def test_make_snippet_keeps_body_when_title_differs():
+    """A leading heading unrelated to the title is preserved."""
+    snippet = _make_snippet("## What is a Pod?\n\nA Pod is the smallest unit.", title="Pods")
+    assert snippet.startswith("What is a Pod?")
+
+
 def test_chunk_title_prefers_deepest_heading():
     """Title should be the chunk's own section heading, not the page title."""
     meta = {"title": "Pods", "heading_hierarchy": ["Pods", "What is a Pod?"]}

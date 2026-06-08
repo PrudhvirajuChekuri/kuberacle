@@ -49,20 +49,25 @@ def _chunk_title(metadata: Mapping[str, Any]) -> str:
     return str(metadata.get("title", ""))
 
 
-def _make_snippet(content: str, limit: int = 200) -> str:
+def _make_snippet(content: str, limit: int = 200, title: str = "") -> str:
     """Build a short, single-line preview snippet from chunk content.
 
     Strips leading Markdown markers (headings, blockquotes, list bullets) and a
     leading ``[Heading]`` marker line by line, collapses whitespace, and
-    truncates to ``limit`` characters with an ellipsis.
+    truncates to ``limit`` characters with an ellipsis. Skips a leading line that
+    merely repeats ``title`` (the chunk's section heading shown above the
+    snippet), so the preview starts at the body rather than echoing the title.
 
     Args:
         content: Raw chunk text content.
         limit: Maximum length of the returned snippet.
+        title: Chunk section title shown alongside the snippet; a leading content
+            line equal to it (case-insensitively) is dropped to avoid repetition.
 
     Returns:
         A cleaned, truncated preview string.
     """
+    title_norm = title.strip().casefold()
     cleaned: list[str] = []
     for line in content.splitlines():
         stripped = re.sub(r"^\s*[#>*+\-]+\s+", "", line).strip()
@@ -70,8 +75,11 @@ def _make_snippet(content: str, limit: int = 200) -> str:
             end = stripped.find("]")
             if end != -1:
                 stripped = stripped[end + 1 :].strip()
-        if stripped:
-            cleaned.append(stripped)
+        if not stripped:
+            continue
+        if not cleaned and title_norm and stripped.casefold() == title_norm:
+            continue
+        cleaned.append(stripped)
     text = " ".join(" ".join(cleaned).split())
     if len(text) > limit:
         text = text[:limit].rstrip() + "…"
@@ -258,17 +266,20 @@ class RAGQASystem:
         if len(supporting) < self.min_supporting_chunks:
             return None
 
-        return [
-            Citation(
-                index=idx,
-                chunk_id=chunk.chunk_id,
-                source_url=str(chunk.metadata.get("source_url", "unknown")),
-                score=chunk.score,
-                title=_chunk_title(chunk.metadata),
-                snippet=_make_snippet(chunk.content),
+        citations = []
+        for idx, chunk in selected:
+            title = _chunk_title(chunk.metadata)
+            citations.append(
+                Citation(
+                    index=idx,
+                    chunk_id=chunk.chunk_id,
+                    source_url=str(chunk.metadata.get("source_url", "unknown")),
+                    score=chunk.score,
+                    title=title,
+                    snippet=_make_snippet(chunk.content, title=title),
+                )
             )
-            for idx, chunk in selected
-        ]
+        return citations
 
     def _insufficient_with_chunks(self, chunks: list[RetrievedChunk]) -> QAResult:
         """Build insufficient evidence result."""
