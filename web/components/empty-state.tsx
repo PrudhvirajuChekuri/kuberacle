@@ -7,14 +7,14 @@ import { K8S_VERSION } from "@/lib/constants";
 const SUGGESTIONS = [
   { tag: "concept", label: "What is a Pod?", q: "What is a Pod?" },
   {
-    tag: "compare",
-    label: "How does a Deployment differ from a StatefulSet?",
-    q: "How does a Deployment differ from a StatefulSet?",
+    tag: "tutorial",
+    label: "How do I configure a Pod to use a PersistentVolume?",
+    q: "How do I configure a Pod to use a PersistentVolume?",
   },
   {
     tag: "task",
-    label: "How do I expose a Service outside the cluster?",
-    q: "How do I expose a Service outside the cluster?",
+    label: "How do I roll back a Deployment with kubectl?",
+    q: "How do I roll back a Deployment with kubectl?",
   },
 ];
 

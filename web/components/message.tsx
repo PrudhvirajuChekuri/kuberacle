@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type MouseEvent, type ReactNode } from "react";
-import { AlertTriangle, FileText, Layers, Search } from "lucide-react";
+import { useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { AlertTriangle, Layers, Search } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { CitationCard } from "@/components/citation-card";
+import { CitationPreview } from "@/components/citation-preview";
 import { CodeBlock } from "@/components/code-block";
 import { CopyButton } from "@/components/copy-button";
 import { Cube } from "@/components/cube-icon";
@@ -71,15 +72,26 @@ function CitationChip({
   onSelect: () => void;
   children: ReactNode;
 }) {
+  const ref = useRef<HTMLAnchorElement>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
   const handleClick = (e: MouseEvent) => {
     e.preventDefault();
     onSelect();
   };
 
+  const show = () => setAnchorRect(ref.current?.getBoundingClientRect() ?? null);
+  const hide = () => setAnchorRect(null);
+
   const chip = (
     <a
+      ref={ref}
       href={href}
       onClick={handleClick}
+      onMouseEnter={citation ? show : undefined}
+      onMouseLeave={citation ? hide : undefined}
+      onFocus={citation ? show : undefined}
+      onBlur={citation ? hide : undefined}
       className="mx-0.5 inline-flex h-4 min-w-[17px] items-center justify-center rounded-md bg-brand-soft px-1 align-super font-mono text-[10.5px] font-semibold text-primary no-underline transition-colors hover:bg-primary hover:text-white"
     >
       {children}
@@ -87,23 +99,10 @@ function CitationChip({
   );
   if (!citation) return chip;
   return (
-    <span className="group relative inline-block">
+    <>
       {chip}
-      <span className="pointer-events-none invisible absolute bottom-[calc(100%+8px)] left-1/2 z-40 flex w-[290px] -translate-x-1/2 flex-col gap-1.5 rounded-[11px] border border-border-2 bg-card p-3.5 text-left opacity-0 shadow-[var(--shadow)] transition-opacity group-hover:visible group-hover:opacity-100">
-        <span className="flex items-start gap-1.5">
-          <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-          <span className="text-[13px] font-semibold leading-tight text-foreground">
-            {citation.title || "Source"}
-          </span>
-        </span>
-        {citation.snippet && (
-          <span className="line-clamp-3 text-xs leading-relaxed text-text-2">
-            {citation.snippet}
-          </span>
-        )}
-        <span className="font-mono text-[11px] text-text-3">kubernetes.io</span>
-      </span>
-    </span>
+      {anchorRect && <CitationPreview anchorRect={anchorRect} citation={citation} />}
+    </>
   );
 }
 

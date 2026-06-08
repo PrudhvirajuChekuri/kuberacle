@@ -62,7 +62,7 @@ export function Chat() {
                 onSend={send}
                 onStop={stop}
                 isStreaming={isStreaming}
-                placeholder="Ask a follow-up…"
+                placeholder="Ask another question…"
               />
               <p className="mt-2 text-center text-[11px] text-text-3">
                 Answers may be incomplete. Always verify against the official docs.
