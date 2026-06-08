@@ -1,0 +1,35 @@
+# Local-only stack: FastAPI backend (baked Chroma index) + Kuberacle web UI.
+# Run: docker compose up
+# The backend still calls GCP at runtime, so your local ADC is mounted read-only.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # GCP_PROJECT / GCP_LOCATION (and GCS_INDEX_BUCKET, unused here) come from .env.
+    env_file:
+      - .env
+    environment:
+      # Point ADC at the mounted credentials file.
+      GOOGLE_APPLICATION_CREDENTIALS: /gcp/adc.json
+    volumes:
+      # Mount local Application Default Credentials read-only (never baked into the image).
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/gcp/adc.json:ro
+      # Fallback if the single-file mount misbehaves: mount the whole gcloud config
+      # instead and set CLOUDSDK_CONFIG: /gcloud in the environment block above.
+      #   - ${HOME}/.config/gcloud:/gcloud:ro
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      # Reach the backend over the compose network; "api" resolves to the api container.
+      RAG_API_URL: http://api:8000
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"

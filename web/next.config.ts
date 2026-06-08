@@ -12,6 +12,7 @@ function readK8sVersion(): string {
 }
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   env: {
     NEXT_PUBLIC_K8S_VERSION: readK8sVersion(),
   },

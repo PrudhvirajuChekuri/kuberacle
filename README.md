@@ -8,7 +8,7 @@ Ask questions about Kubernetes and get grounded answers with citations to the of
 
 🚧 **In Development**
 
-The full RAG pipeline is implemented and running on GCP. Preprocessing, ingestion, hybrid retrieval, reranking, cited answer generation, and deterministic evaluation gates are all in place with CI on pull requests. A streaming FastAPI service and a Next.js web UI sit on top of the pipeline (see [Run the API](#run-the-api) and [Web UI](#web-ui)).
+The full RAG pipeline is implemented and running on GCP. Preprocessing, ingestion, hybrid retrieval, reranking, cited answer generation, and deterministic evaluation gates are all in place with CI on pull requests. A streaming FastAPI service and a Next.js web UI sit on top of the pipeline (see [Run the API](#run-the-api) and [Web UI](#web-ui)), and the whole stack runs in containers via Docker Compose (see [Run with Docker](#run-with-docker)).
 
 ## Architecture
 
@@ -149,6 +149,46 @@ npm run dev        # http://localhost:3000
 The frontend proxies requests to the backend via `RAG_API_URL` (defaults to `http://127.0.0.1:8000`, set in `web/.env.local`).
 
 **Stack:** Next.js (App Router) + TypeScript, Tailwind CSS + shadcn/ui, `react-markdown`. A custom hook consumes the SSE stream; clicking an inline `[n]` marker scrolls to and highlights its citation card, hovering one shows a source preview, and an "ungrounded" notice is shown when the answer could not be verified.
+
+## Run with Docker
+
+The full stack (API + web UI) runs in two containers via Docker Compose. The Chroma index is baked into the API image, so no ingestion is needed to run it. The API still calls GCP at runtime (embeddings, generation, reranking), so your local ADC is mounted into the container read-only.
+
+### Prerequisites
+
+- Docker with Compose v2 (on WSL, enable Docker Desktop's WSL integration)
+- A GCP project with `aiplatform.googleapis.com` and `discoveryengine.googleapis.com` enabled (queries call these at runtime and consume credits)
+- ADC configured: `gcloud auth application-default login`
+- A `.env` file in the project root with `GCP_PROJECT` and `GCP_LOCATION`
+
+### Get the index
+
+The Chroma index is not stored in the repository. Download the prebuilt index bundle and extract it from the project root before building:
+
+```bash
+curl -L -o chroma-index.tar.gz \
+  https://github.com/PrudhvirajuChekuri/k8s-docs-rag/releases/latest/download/chroma-index.tar.gz
+tar -xzf chroma-index.tar.gz        # restores data/vector/chroma_gemini and data/k8s_version.txt
+```
+
+The bundle contains the vector store (`data/vector/chroma_gemini`) and the corpus version file (`data/k8s_version.txt`), both of which the image build reads. Alternatively, build the index yourself with the pipeline steps under [Run RAG Pipeline](#run-rag-pipeline).
+
+### Run
+
+```bash
+docker compose up        # add -d to run detached
+```
+
+- Web UI: http://localhost:3000
+- API: http://localhost:8000 (`GET /health` returns `{"status": "ok"}`)
+
+Stop and remove the containers:
+
+```bash
+docker compose down
+```
+
+The web container reaches the API over the Compose network via `RAG_API_URL=http://api:8000`. Credentials are provided only at runtime through a read-only volume mount and are never copied into the image. If the single-file ADC mount misbehaves, `docker-compose.yml` documents a whole-directory fallback.
 
 ## Evaluation Gates
 

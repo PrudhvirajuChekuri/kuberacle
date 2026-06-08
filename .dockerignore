@@ -1,0 +1,37 @@
+# Single build context (repo root) is shared by both images, so excludes are by
+# specific subpath. Kept on purpose: web/ source, src/, configs/,
+# data/vector/chroma_gemini (baked index), data/k8s_version.txt (build-time version).
+
+# Secrets / env (credentials are mounted at runtime, never copied in)
+.env
+**/.env.local
+
+# Python
+venv/
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / Next build output (huge; regenerated inside the image)
+web/node_modules/
+web/.next/
+
+# VCS and editor
+.git/
+.gitignore
+
+# Tests and dev-only assets
+tests/
+
+# Raw and derived corpus data (not needed at runtime; index is baked separately)
+data/raw/
+data/processed/
+data/examples/
+data/glossary/
+data/includes/
+
+# Untracked local-only files
+HANDOFF.md
+CLAUDE.md
+design/
