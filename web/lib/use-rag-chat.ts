@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { parseSSE } from "@/lib/sse";
+import { useTurnstile } from "@/components/turnstile";
 import type { ChatMessage, FinalEventData } from "@/lib/types";
 
 let counter = 0;
@@ -18,6 +19,7 @@ export function useRagChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const turnstile = useTurnstile();
 
   const send = useCallback(
     async (question: string) => {
@@ -40,15 +42,29 @@ export function useRagChat() {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (turnstile?.enabled) {
+        try {
+          headers["X-Turnstile-Token"] = await turnstile.getToken();
+        } catch (err) {
+          patch({ pending: false, error: true, content: (err as Error).message });
+          setIsStreaming(false);
+          abortRef.current = null;
+          return;
+        }
+      }
+
       try {
         const res = await fetch("/api/query", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ question: trimmed }),
           signal: controller.signal,
         });
 
-        if (!res.ok || !res.body) {
+        // The proxy forwards upstream guardrail rejections (403/429) with their
+        // SSE error frame, so non-OK responses still carry a usable body.
+        if (!res.body) {
           patch({ pending: false, error: true, content: "Failed to reach the server." });
           return;
         }
@@ -80,7 +96,7 @@ export function useRagChat() {
         abortRef.current = null;
       }
     },
-    [isStreaming],
+    [isStreaming, turnstile],
   );
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
