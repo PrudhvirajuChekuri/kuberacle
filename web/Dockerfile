@@ -15,6 +15,11 @@ RUN npm ci
 COPY web/ ./
 COPY data/k8s_version.txt /data/k8s_version.txt
 
+# Public Turnstile site key, baked into the client bundle at build time.
+# Unset (e.g. local compose) leaves Turnstile disabled in the built image.
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
+ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY
+
 # Produces .next/standalone (requires output: "standalone" in next.config.ts).
 RUN npm run build
 
