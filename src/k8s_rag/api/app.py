@@ -21,9 +21,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
+from k8s_rag.api.counters import FirestoreCounters
+from k8s_rag.api.guardrails import GuardrailError, Guardrails
 from k8s_rag.api.schemas import CitationModel, QueryRequest
+from k8s_rag.api.settings import load_guardrail_settings
 from k8s_rag.ingestion.config import load_rag_config
 from k8s_rag.retrieval.factory import build_qa_system
 from k8s_rag.retrieval.qa import AnswerDelta
@@ -62,6 +65,15 @@ async def lifespan(app: FastAPI):
     load_dotenv(root / ".env")
     config = load_rag_config(root / "configs" / "rag.yaml")
     app.state.qa_system = build_qa_system(config, root)
+
+    settings = load_guardrail_settings()
+    if settings.enabled:
+        counters = FirestoreCounters(
+            settings.gcp_project, settings.firestore_database
+        )
+        app.state.guardrails = Guardrails(settings, counters)
+        logger.info("Guardrails enabled")
+
     logger.info("RAG QA system ready")
     yield
 
@@ -73,6 +85,9 @@ def create_app() -> FastAPI:
         Configured FastAPI app with CORS, health, and streaming query routes.
     """
     app = FastAPI(title="k8s-docs-rag API", lifespan=lifespan)
+    # Default to no guardrails so local dev and tests (which do not run the
+    # lifespan hook) skip them; the lifespan enables them when configured.
+    app.state.guardrails = None
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
@@ -89,6 +104,21 @@ def create_app() -> FastAPI:
     async def query(payload: QueryRequest, request: Request) -> StreamingResponse:
         """Stream a grounded answer for a question over SSE."""
         qa_system = request.app.state.qa_system
+
+        guardrails = request.app.state.guardrails
+        if guardrails is not None:
+            try:
+                guardrails.enforce(
+                    request.headers.get("X-Client-IP", ""),
+                    request.headers.get("X-Turnstile-Token", ""),
+                )
+            except GuardrailError as exc:
+                return Response(
+                    content=_sse("error", {"message": exc.message}),
+                    media_type="text/event-stream",
+                    status_code=exc.status_code,
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
 
         def event_stream() -> Iterator[str]:
             try:

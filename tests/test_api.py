@@ -8,6 +8,7 @@ stubbed instead.
 from fastapi.testclient import TestClient
 
 from k8s_rag.api.app import create_app
+from k8s_rag.api.guardrails import GuardrailError
 from k8s_rag.retrieval.qa import AnswerDelta, Citation, QAResult
 
 
@@ -22,9 +23,24 @@ class FakeQA:
         yield from self._events
 
 
-def _client_with(events) -> TestClient:
+class FakeGuardrails:
+    """Stub guardrails that record the request and optionally reject it."""
+
+    def __init__(self, error=None):
+        self._error = error
+        self.calls = []
+
+    def enforce(self, client_ip, turnstile_token):
+        self.calls.append((client_ip, turnstile_token))
+        if self._error is not None:
+            raise self._error
+
+
+def _client_with(events, guardrails=None) -> TestClient:
     app = create_app()
     app.state.qa_system = FakeQA(events)
+    if guardrails is not None:
+        app.state.guardrails = guardrails
     return TestClient(app)
 
 
@@ -83,3 +99,51 @@ def test_query_rejects_empty_question():
     """An empty question should be rejected by request validation."""
     resp = _client_with([]).post("/query", json={"question": ""})
     assert resp.status_code == 422
+
+
+def test_query_runs_guardrails_with_forwarded_headers():
+    """When guardrails are set, the request is enforced before streaming."""
+    events = [
+        AnswerDelta("Pods run."),
+        QAResult(answer="Pods run.", citations=[], retrieved_chunks=[]),
+    ]
+    guardrails = FakeGuardrails()
+    client = _client_with(events, guardrails=guardrails)
+
+    resp = client.post(
+        "/query",
+        json={"question": "q"},
+        headers={"X-Client-IP": "1.2.3.4", "X-Turnstile-Token": "tok"},
+    )
+
+    assert resp.status_code == 200
+    assert "event: final" in resp.text
+    assert guardrails.calls == [("1.2.3.4", "tok")]
+
+
+def test_query_blocked_returns_status_and_sse_error():
+    """A rejected request returns the guardrail status with an SSE error frame."""
+    guardrails = FakeGuardrails(
+        error=GuardrailError(429, "You have reached your daily query limit.")
+    )
+    client = _client_with([], guardrails=guardrails)
+
+    resp = client.post("/query", json={"question": "q"})
+
+    assert resp.status_code == 429
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert "event: error" in resp.text
+    assert "daily query limit" in resp.text
+
+
+def test_query_bot_check_failure_returns_403():
+    """A failed bot check surfaces as a 403 SSE error."""
+    guardrails = FakeGuardrails(
+        error=GuardrailError(403, "Bot check failed. Please reload and try again.")
+    )
+    client = _client_with([], guardrails=guardrails)
+
+    resp = client.post("/query", json={"question": "q"})
+
+    assert resp.status_code == 403
+    assert "Bot check failed" in resp.text

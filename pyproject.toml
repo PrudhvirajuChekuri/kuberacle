@@ -23,6 +23,7 @@ dependencies = [
 api = [
     "fastapi",
     "uvicorn[standard]",
+    "google-cloud-firestore",
 ]
 eval = [
     "datasets",
