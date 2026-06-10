@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowUp, Search, Square } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { ArrowUp, Square } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,17 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, onStop, isStreaming, big, placeholder }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow the textarea to fit its content (up to the CSS max-height, then it
+  // scrolls). Reset to "auto" first so it can shrink back when text is removed
+  // or cleared after submit.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
 
   const submit = () => {
     const trimmed = value.trim();
@@ -26,12 +37,12 @@ export function ChatInput({ onSend, onStop, isStreaming, big, placeholder }: Cha
   return (
     <div
       className={cn(
-        "group flex items-center gap-2.5 border border-border-2 bg-card shadow-[var(--shadow)] transition-colors focus-within:border-primary",
+        "group flex items-end gap-2.5 border border-border-2 bg-card shadow-[var(--shadow)] transition-colors focus-within:border-primary",
         big ? "rounded-[15px] px-4 py-2.5" : "rounded-[13px] px-3.5 py-2",
       )}
     >
-      <Search className="h-[18px] w-[18px] shrink-0 text-text-3 transition-colors group-focus-within:text-primary" />
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -43,7 +54,7 @@ export function ChatInput({ onSend, onStop, isStreaming, big, placeholder }: Cha
         placeholder={placeholder ?? "Ask about Kubernetes…"}
         rows={1}
         className={cn(
-          "max-h-40 min-h-0 flex-1 resize-none border-0 bg-transparent text-foreground outline-none placeholder:text-text-3",
+          "scroll-area max-h-40 min-h-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent text-foreground outline-none placeholder:text-text-3",
           big ? "py-1.5 text-[16.5px]" : "py-1 text-[16px]",
         )}
       />
