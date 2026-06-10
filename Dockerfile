@@ -34,6 +34,10 @@ WORKDIR /app
 COPY configs ./configs
 COPY data/vector/chroma_gemini ./data/vector/chroma_gemini
 
+# Run as a non-root user; the baked index is read-only at runtime.
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
+
 EXPOSE 8000
 
 # Bind 0.0.0.0 so the service is reachable from outside the container.

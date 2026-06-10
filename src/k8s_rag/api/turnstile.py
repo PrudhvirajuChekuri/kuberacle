@@ -7,6 +7,7 @@ verification so a broken siteverify call never silently lets traffic through.
 """
 
 import logging
+from collections.abc import Iterable
 
 import requests
 
@@ -19,6 +20,7 @@ def verify_turnstile(
     token: str,
     secret: str,
     remote_ip: str | None = None,
+    expected_hostnames: Iterable[str] | None = None,
     timeout: float = 5.0,
 ) -> bool:
     """Verify a Turnstile token with Cloudflare siteverify.
@@ -27,11 +29,17 @@ def verify_turnstile(
         token: Turnstile response token minted by the browser widget.
         secret: Turnstile secret key.
         remote_ip: Optional client IP to include in the verification.
+        expected_hostnames: Optional allowlist of hostnames the token must have
+            been solved on. When non-empty, a token whose ``hostname`` is not in
+            the set is rejected, closing token-farming from another allowed host
+            (e.g. localhost) using the public site key.
         timeout: HTTP timeout in seconds.
 
     Returns:
-        True only when Cloudflare reports the token as successful; False on an
-        empty token, a non-success result, or any request/parse failure.
+        True only when Cloudflare reports the token as successful (and, when
+        ``expected_hostnames`` is given, the solved hostname is allowed); False
+        on an empty token, a non-success result, a hostname mismatch, or any
+        request/parse failure.
     """
     if not token:
         return False
@@ -48,4 +56,14 @@ def verify_turnstile(
         logger.exception("Turnstile verification request failed")
         return False
 
-    return bool(result.get("success", False))
+    if not result.get("success", False):
+        return False
+
+    allowed = {h for h in (expected_hostnames or []) if h}
+    if allowed and result.get("hostname") not in allowed:
+        logger.warning(
+            "Turnstile token solved on unexpected hostname %r", result.get("hostname")
+        )
+        return False
+
+    return True

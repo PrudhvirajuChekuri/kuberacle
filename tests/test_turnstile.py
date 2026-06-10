@@ -69,3 +69,37 @@ def test_request_failure_is_false(monkeypatch):
 
     monkeypatch.setattr(turnstile.requests, "post", fake_post)
     assert verify_turnstile("tok", "secret") is False
+
+
+def test_allowed_hostname_passes(monkeypatch):
+    """A success token solved on an allowed hostname yields True."""
+    monkeypatch.setattr(
+        turnstile.requests,
+        "post",
+        lambda *a, **k: FakeResponse({"success": True, "hostname": "kuberacle.dev"}),
+    )
+    assert (
+        verify_turnstile("tok", "secret", expected_hostnames=["kuberacle.dev"]) is True
+    )
+
+
+def test_unexpected_hostname_is_rejected(monkeypatch):
+    """A success token solved on a non-allowed hostname yields False."""
+    monkeypatch.setattr(
+        turnstile.requests,
+        "post",
+        lambda *a, **k: FakeResponse({"success": True, "hostname": "evil.example"}),
+    )
+    assert (
+        verify_turnstile("tok", "secret", expected_hostnames=["kuberacle.dev"]) is False
+    )
+
+
+def test_empty_hostname_allowlist_skips_check(monkeypatch):
+    """With no expected hostnames the hostname field is not enforced."""
+    monkeypatch.setattr(
+        turnstile.requests,
+        "post",
+        lambda *a, **k: FakeResponse({"success": True, "hostname": "anything"}),
+    )
+    assert verify_turnstile("tok", "secret", expected_hostnames=[]) is True

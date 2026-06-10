@@ -439,12 +439,12 @@ class _FakeSession:
     def __init__(self, response_data):
         self._data = response_data
 
-    def post(self, url, json, headers):
+    def post(self, url, json, headers, timeout=None):
         return _FakeResponse(self._data)
 
 
 class _FailingSession:
-    def post(self, url, json, headers):
+    def post(self, url, json, headers, timeout=None):
         raise RuntimeError("network error")
 
 

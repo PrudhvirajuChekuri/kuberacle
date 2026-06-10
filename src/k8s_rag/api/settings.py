@@ -23,6 +23,9 @@ class GuardrailSettings:
         ip_hash_salt: Salt mixed into client IPs before hashing for storage.
         gcp_project: GCP project ID hosting the Firestore database.
         firestore_database: Firestore database name (``(default)`` normally).
+        turnstile_hostnames: Hostnames a Turnstile token must have been solved
+            on. Empty disables the check (local dev); set in prod to reject
+            tokens farmed on another allowed host with the public site key.
     """
 
     enabled: bool
@@ -32,6 +35,7 @@ class GuardrailSettings:
     ip_hash_salt: str
     gcp_project: str
     firestore_database: str
+    turnstile_hostnames: tuple[str, ...] = ()
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -81,6 +85,12 @@ def load_guardrail_settings() -> GuardrailSettings:
                 f"missing: {', '.join(missing)}."
             )
 
+    hostnames = tuple(
+        h.strip()
+        for h in os.environ.get("TURNSTILE_HOSTNAMES", "").split(",")
+        if h.strip()
+    )
+
     return GuardrailSettings(
         enabled=enabled,
         turnstile_secret=turnstile_secret,
@@ -89,4 +99,5 @@ def load_guardrail_settings() -> GuardrailSettings:
         ip_hash_salt=ip_hash_salt,
         gcp_project=gcp_project,
         firestore_database=os.environ.get("FIRESTORE_DATABASE", "(default)"),
+        turnstile_hostnames=hostnames,
     )

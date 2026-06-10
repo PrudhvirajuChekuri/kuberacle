@@ -8,6 +8,10 @@ from k8s_rag.retrieval.constants import DISCOVERY_ENGINE_RANK_URL
 
 logger = logging.getLogger(__name__)
 
+#: HTTP timeout (seconds) for the Discovery Engine rank call, so a hung upstream
+#: cannot pin a worker; on timeout the request falls back to hybrid ordering.
+_RANK_TIMEOUT = 10.0
+
 
 class DiscoveryEngineReranker:
     """Rerank query/chunk candidates using the Discovery Engine Ranking API.
@@ -104,6 +108,7 @@ class DiscoveryEngineReranker:
                 url,
                 json=payload,
                 headers={"Authorization": f"Bearer {token}"},
+                timeout=_RANK_TIMEOUT,
             )
             response.raise_for_status()
             results = response.json().get("records", [])

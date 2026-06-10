@@ -101,6 +101,23 @@ def test_query_rejects_empty_question():
     assert resp.status_code == 422
 
 
+def test_query_rejects_overlong_question():
+    """A question past the length cap is rejected before any model call."""
+    from k8s_rag.api.schemas import MAX_QUESTION_LENGTH
+
+    resp = _client_with([]).post(
+        "/query", json={"question": "a" * (MAX_QUESTION_LENGTH + 1)}
+    )
+    assert resp.status_code == 422
+
+
+def test_docs_disabled_by_default():
+    """The interactive docs and OpenAPI schema are off unless explicitly enabled."""
+    client = TestClient(create_app())
+    assert client.get("/openapi.json").status_code == 404
+    assert client.get("/docs").status_code == 404
+
+
 def test_query_runs_guardrails_with_forwarded_headers():
     """When guardrails are set, the request is enforced before streaming."""
     events = [

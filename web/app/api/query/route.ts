@@ -11,6 +11,10 @@ const API_AUDIENCE = process.env.RAG_API_AUDIENCE;
 
 const auth = new GoogleAuth();
 
+// Reject oversized bodies before forwarding (defense in depth alongside the
+// API's own question length limit); keep ample headroom over a real question.
+const MAX_BODY_BYTES = 8 * 1024;
+
 function sseError(message: string, status: number): Response {
   return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
     status,
@@ -18,12 +22,18 @@ function sseError(message: string, status: number): Response {
   });
 }
 
-/** Best-effort client IP from the inbound forwarding headers. */
+/** Trusted client IP from the inbound forwarding headers.
+ *
+ * Cloud Run appends the real caller IP as the rightmost `X-Forwarded-For`
+ * entry; entries to its left are client-supplied and spoofable. Taking the
+ * last entry keeps the per-IP rate-limit bucket tied to the actual caller so it
+ * cannot be evaded by prepending a forged value.
+ */
 function clientIp(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
-    const first = forwarded.split(",")[0].trim();
-    if (first) return first;
+    const parts = forwarded.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
   }
   return request.headers.get("x-real-ip") ?? "";
 }
@@ -38,6 +48,10 @@ async function authHeader(): Promise<Record<string, string>> {
 
 export async function POST(request: Request): Promise<Response> {
   const body = await request.text();
+
+  if (body.length > MAX_BODY_BYTES) {
+    return sseError("Question is too long.", 413);
+  }
 
   let authHeaders: Record<string, string>;
   try {
