@@ -66,6 +66,25 @@ class FixedAnswerGenerator:
         return self.answer
 
 
+class FakeRelevanceGate:
+    """Gate stub with a fixed verdict that records questions."""
+
+    def __init__(self, relevant):
+        self.relevant = relevant
+        self.calls = []
+
+    def is_relevant(self, question):
+        self.calls.append(question)
+        return self.relevant
+
+
+class ExplodingRetriever:
+    """Retriever that fails the test if it is ever called."""
+
+    def retrieve(self, query, top_k=None):
+        raise AssertionError("retriever should not be called")
+
+
 class FakeBM25Retriever:
     """Returns a fixed chunk list for BM25 tests."""
 
@@ -201,6 +220,39 @@ def test_qa_system_handles_insufficient_evidence():
     result = qa.ask("Unknown question?")
     assert result.answer.startswith("INSUFFICIENT_EVIDENCE")
     assert result.citations == []
+
+
+def test_qa_system_gate_blocks_out_of_scope_question():
+    """An out-of-scope verdict should refuse before retrieval runs."""
+    gate = FakeRelevanceGate(relevant=False)
+    qa = RAGQASystem(
+        retriever=ExplodingRetriever(),
+        generator=FixedAnswerGenerator("unused"),
+        relevance_gate=gate,
+    )
+    result = qa.ask("hello there")
+    assert result.answer.startswith("INSUFFICIENT_EVIDENCE")
+    assert result.citations == []
+    assert result.retrieved_chunks == []
+    assert gate.calls == ["hello there"]
+
+
+def test_qa_system_gate_allows_in_scope_question():
+    """An in-scope verdict should run the normal pipeline."""
+    retriever = SemanticRetriever(
+        embedder=FakeEmbedder(),
+        vector_store=FakeVectorStore(),
+        top_k=5,
+    )
+    gate = FakeRelevanceGate(relevant=True)
+    qa = RAGQASystem(
+        retriever=retriever,
+        generator=FixedAnswerGenerator("Answer text [1]."),
+        relevance_gate=gate,
+    )
+    result = qa.ask("What is a Pod?")
+    assert len(result.citations) == 1
+    assert gate.calls == ["What is a Pod?"]
 
 
 def test_extract_citation_indices_ordered_unique():

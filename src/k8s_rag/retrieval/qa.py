@@ -20,6 +20,10 @@ _UNVERIFIED_ANSWER = (
     "INSUFFICIENT_EVIDENCE. I could not verify enough supported "
     "citations for this question."
 )
+_OUT_OF_SCOPE_ANSWER = (
+    "INSUFFICIENT_EVIDENCE. This question is outside the scope of the "
+    "Kubernetes documentation, so I cannot answer it from my sources."
+)
 
 
 def _chunk_title(metadata: Mapping[str, Any]) -> str:
@@ -135,6 +139,7 @@ class RAGQASystem:
         min_supporting_chunks: int = 1,
         strict_used_only: bool = True,
         deduplicate_citations: bool = True,
+        relevance_gate: Any = None,
     ) -> None:
         self.retriever = retriever
         self.generator = generator
@@ -142,6 +147,21 @@ class RAGQASystem:
         self.min_supporting_chunks = min_supporting_chunks
         self.strict_used_only = strict_used_only
         self.deduplicate_citations = deduplicate_citations
+        self.relevance_gate = relevance_gate
+
+    def _is_out_of_scope(self, question: str) -> bool:
+        """Check the question against the optional pre-retrieval gate.
+
+        Args:
+            question: User question.
+
+        Returns:
+            True when a gate is configured and classifies the question as out
+            of scope for the docs corpus; False otherwise.
+        """
+        if self.relevance_gate is None:
+            return False
+        return not self.relevance_gate.is_relevant(question)
 
     def ask(self, question: str, top_k: int | None = None) -> QAResult:
         """Answer a user question with source citations.
@@ -154,6 +174,12 @@ class RAGQASystem:
             QA result with answer and citations.
         """
         logger.info("Processing question: %r", question[:100])
+        if self._is_out_of_scope(question):
+            return QAResult(
+                answer=_OUT_OF_SCOPE_ANSWER,
+                citations=[],
+                retrieved_chunks=[],
+            )
         chunks = self.retriever.retrieve(question, top_k=top_k)
         if not chunks:
             logger.warning("No chunks retrieved for question: %r", question[:100])
@@ -194,6 +220,14 @@ class RAGQASystem:
             Zero or more ``AnswerDelta`` items, then one terminal ``QAResult``.
         """
         logger.info("Processing question (stream): %r", question[:100])
+        if self._is_out_of_scope(question):
+            yield AnswerDelta(text=_OUT_OF_SCOPE_ANSWER)
+            yield QAResult(
+                answer=_OUT_OF_SCOPE_ANSWER,
+                citations=[],
+                retrieved_chunks=[],
+            )
+            return
         chunks = self.retriever.retrieve(question, top_k=top_k)
         if not chunks:
             logger.warning("No chunks retrieved for question: %r", question[:100])

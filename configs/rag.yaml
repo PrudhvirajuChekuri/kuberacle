@@ -28,6 +28,10 @@ citation:
   strict_used_only: true
   deduplicate: true
 
+gate:
+  enabled: true
+  model: "gemini-2.5-flash-lite"
+
 prompts:
   version: "v1"
   directory: "configs/prompts"

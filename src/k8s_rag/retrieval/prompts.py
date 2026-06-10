@@ -35,3 +35,23 @@ def load_prompt_bundle(base_dir: str, version: str) -> dict[str, str]:
         "user": str(answer_cfg.get("user", "")),
         "citation_rules": citation_rules,
     }
+
+
+def load_gate_prompt(base_dir: str, version: str) -> dict[str, str]:
+    """Load the relevance gate prompt artifacts for a version.
+
+    Args:
+        base_dir: Prompt root directory (e.g. configs/prompts).
+        version: Prompt version (e.g. v1).
+
+    Returns:
+        Dict with keys `system` and `user`; the `user` template contains a
+        `{question}` placeholder.
+    """
+    gate_path = Path(base_dir) / version / "gate.yaml"
+    with open(gate_path, "r", encoding="utf-8") as file:
+        gate_cfg = yaml.safe_load(file) or {}
+    return {
+        "system": str(gate_cfg.get("system", "")),
+        "user": str(gate_cfg.get("user", "")),
+    }
