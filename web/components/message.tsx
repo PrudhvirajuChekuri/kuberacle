@@ -118,7 +118,7 @@ function ThinkingDots() {
           />
         ))}
       </span>
-      searching kubernetes.io docs…
+      working on it…
     </div>
   );
 }
