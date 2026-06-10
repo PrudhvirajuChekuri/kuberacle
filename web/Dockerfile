@@ -35,5 +35,8 @@ COPY --from=builder /app/public ./public
 
 EXPOSE 3000
 
+# Run as the image's built-in non-root user; the bundle is read-only at runtime.
+USER node
+
 # Next standalone emits server.js at the app root.
 CMD ["node", "server.js"]

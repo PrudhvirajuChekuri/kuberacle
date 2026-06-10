@@ -78,6 +78,31 @@ def test_per_ip_cap_raises_429():
     assert exc.value.status_code == 429
 
 
+def test_verifier_receives_ip_and_expected_hostnames():
+    counters = FakeCounters(Decision(True, None))
+    calls = []
+
+    def recording_verifier(token, secret, client_ip, hostnames):
+        calls.append((token, secret, client_ip, hostnames))
+        return True
+
+    settings = GuardrailSettings(
+        enabled=True,
+        turnstile_secret="secret",
+        rate_limit_per_ip=10,
+        global_daily_cap=300,
+        ip_hash_salt="salt",
+        gcp_project="p",
+        firestore_database="(default)",
+        turnstile_hostnames=("kuberacle.dev",),
+    )
+    guardrails = Guardrails(settings, counters, verifier=recording_verifier)
+
+    guardrails.enforce("1.2.3.4", "tok")
+
+    assert calls == [("tok", "secret", "1.2.3.4", ("kuberacle.dev",))]
+
+
 def test_missing_ip_uses_unknown_bucket():
     counters = FakeCounters(Decision(True, None))
     guardrails = Guardrails(_settings(), counters, verifier=lambda *a: True)

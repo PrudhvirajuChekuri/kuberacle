@@ -45,6 +45,20 @@ def _cors_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+def _docs_enabled() -> bool:
+    """Whether to expose the interactive API docs and OpenAPI schema.
+
+    Off by default so the private production service does not serve ``/docs``,
+    ``/redoc``, or ``/openapi.json``; set ``RAG_DOCS_ENABLED=true`` for local dev.
+    """
+    return os.environ.get("RAG_DOCS_ENABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _sse(event: str, data: dict) -> str:
     """Format a Server-Sent Events frame.
 
@@ -84,7 +98,14 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI app with CORS, health, and streaming query routes.
     """
-    app = FastAPI(title="k8s-docs-rag API", lifespan=lifespan)
+    docs = _docs_enabled()
+    app = FastAPI(
+        title="k8s-docs-rag API",
+        lifespan=lifespan,
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
+        openapi_url="/openapi.json" if docs else None,
+    )
     # Default to no guardrails so local dev and tests (which do not run the
     # lifespan hook) skip them; the lifespan enables them when configured.
     app.state.guardrails = None

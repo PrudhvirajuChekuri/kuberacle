@@ -13,8 +13,23 @@ function readK8sVersion(): string {
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Drop the framework-fingerprinting X-Powered-By response header.
+  poweredByHeader: false,
   env: {
     NEXT_PUBLIC_K8S_VERSION: readK8sVersion(),
+  },
+  // Baseline hardening headers. Transport is covered by the .dev HSTS preload.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+    ];
   },
 };
 

@@ -75,7 +75,12 @@ class Guardrails:
                 per-IP or global daily cap is reached.
         """
         settings = self._settings
-        if not self._verify(turnstile_token, settings.turnstile_secret, client_ip):
+        if not self._verify(
+            turnstile_token,
+            settings.turnstile_secret,
+            client_ip,
+            settings.turnstile_hostnames,
+        ):
             raise GuardrailError(403, "Bot check failed. Please reload and try again.")
 
         ip_hash = hash_ip(client_ip or "unknown", settings.ip_hash_salt)

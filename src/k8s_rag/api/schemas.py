@@ -3,6 +3,12 @@
 from pydantic import BaseModel, Field
 
 
+#: Upper bound on question length. Generous for a real question (the embedding
+#: model truncates near 2048 tokens anyway) while rejecting oversized payloads
+#: that would inflate model/reranker cost or pressure memory before any work.
+MAX_QUESTION_LENGTH = 2000
+
+
 class QueryRequest(BaseModel):
     """Incoming question payload for the query endpoint.
 
@@ -10,7 +16,7 @@ class QueryRequest(BaseModel):
         question: Natural-language question to answer.
     """
 
-    question: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=MAX_QUESTION_LENGTH)
 
 
 class CitationModel(BaseModel):
