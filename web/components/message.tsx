@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { AlertTriangle, Layers, Search } from "lucide-react";
+import { AlertTriangle, Layers } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -128,8 +128,7 @@ export function Message({ message }: { message: ChatMessage }) {
 
   if (message.role === "user") {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-2 px-4 py-3">
-        <Search className="h-[18px] w-[18px] shrink-0 text-text-3" />
+      <div className="rounded-xl border border-border bg-surface-2 px-4 py-3">
         <h2 className="whitespace-pre-wrap text-[17px] font-semibold tracking-tight">
           {message.content}
         </h2>
