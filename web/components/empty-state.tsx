@@ -7,14 +7,14 @@ import { K8S_VERSION } from "@/lib/constants";
 const SUGGESTIONS = [
   { tag: "concept", label: "What is a Pod?", q: "What is a Pod?" },
   {
-    tag: "tutorial",
-    label: "How do I configure a Pod to use a PersistentVolume?",
-    q: "How do I configure a Pod to use a PersistentVolume?",
-  },
-  {
     tag: "task",
     label: "How do I roll back a Deployment with kubectl?",
     q: "How do I roll back a Deployment with kubectl?",
+  },
+  {
+    tag: "tutorial",
+    label: "How do I configure a Pod to use a PersistentVolume?",
+    q: "How do I configure a Pod to use a PersistentVolume?",
   },
 ];
 

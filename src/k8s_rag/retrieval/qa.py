@@ -20,6 +20,10 @@ _UNVERIFIED_ANSWER = (
     "INSUFFICIENT_EVIDENCE. I could not verify enough supported "
     "citations for this question."
 )
+_OUT_OF_SCOPE_ANSWER = (
+    "INSUFFICIENT_EVIDENCE. This question is outside the scope of the "
+    "Kubernetes documentation, so I cannot answer it from my sources."
+)
 
 
 def _chunk_title(metadata: Mapping[str, Any]) -> str:
@@ -49,14 +53,41 @@ def _chunk_title(metadata: Mapping[str, Any]) -> str:
     return str(metadata.get("title", ""))
 
 
+_ADMONITION_RE = re.compile(
+    r"^(?:NOTE|TIP|INFO|WARNING|CAUTION|ALERT|DANGER|FEATURE STATE):\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_inline_markup(text: str) -> str:
+    """Remove inline Markdown emphasis and code markers, keeping the text.
+
+    Drops backticks and asterisk emphasis unconditionally; for underscores,
+    only strips emphasis used at word boundaries (``_word_``) so identifiers
+    such as ``revision_history_limit`` are left intact.
+
+    Args:
+        text: A single line of text.
+
+    Returns:
+        The line with inline emphasis and code markers removed.
+    """
+    text = text.replace("`", "")
+    text = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", text)
+    text = re.sub(r"(?<![A-Za-z0-9_])_{1,3}([^_]+?)_{1,3}(?![A-Za-z0-9_])", r"\1", text)
+    return text
+
+
 def _make_snippet(content: str, limit: int = 200, title: str = "") -> str:
     """Build a short, single-line preview snippet from chunk content.
 
-    Strips leading Markdown markers (headings, blockquotes, list bullets) and a
-    leading ``[Heading]`` marker line by line, collapses whitespace, and
-    truncates to ``limit`` characters with an ellipsis. Skips a leading line that
-    merely repeats ``title`` (the chunk's section heading shown above the
-    snippet), so the preview starts at the body rather than echoing the title.
+    Drops fenced code blocks entirely, strips leading Markdown markers
+    (headings, blockquotes, list bullets), a leading ``[Heading]`` breadcrumb
+    marker, leading admonition labels (``NOTE:``/``ALERT:``/...), and inline
+    emphasis/code markers, line by line. Collapses whitespace and truncates to
+    ``limit`` characters with an ellipsis. Skips a leading line that merely
+    repeats ``title`` (the chunk's section heading shown above the snippet), so
+    the preview starts at the body rather than echoing the title.
 
     Args:
         content: Raw chunk text content.
@@ -69,18 +100,28 @@ def _make_snippet(content: str, limit: int = 200, title: str = "") -> str:
     """
     title_norm = title.strip().casefold()
     cleaned: list[str] = []
+    in_fence = False
     for line in content.splitlines():
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
         stripped = re.sub(r"^\s*[#>*+\-]+\s+", "", line).strip()
         if stripped.startswith("["):
             end = stripped.find("]")
             if end != -1:
                 stripped = stripped[end + 1 :].strip()
+        stripped = _ADMONITION_RE.sub("", stripped).strip()
         if not stripped:
             continue
         if not cleaned and title_norm and stripped.casefold() == title_norm:
             continue
         cleaned.append(stripped)
+    # Strip inline emphasis on the joined text so emphasis pairs that span
+    # multiple source lines (e.g. a multi-line italic blurb) are matched.
     text = " ".join(" ".join(cleaned).split())
+    text = " ".join(_strip_inline_markup(text).split())
     if len(text) > limit:
         text = text[:limit].rstrip() + "…"
     return text
@@ -135,6 +176,7 @@ class RAGQASystem:
         min_supporting_chunks: int = 1,
         strict_used_only: bool = True,
         deduplicate_citations: bool = True,
+        relevance_gate: Any = None,
     ) -> None:
         self.retriever = retriever
         self.generator = generator
@@ -142,6 +184,21 @@ class RAGQASystem:
         self.min_supporting_chunks = min_supporting_chunks
         self.strict_used_only = strict_used_only
         self.deduplicate_citations = deduplicate_citations
+        self.relevance_gate = relevance_gate
+
+    def _is_out_of_scope(self, question: str) -> bool:
+        """Check the question against the optional pre-retrieval gate.
+
+        Args:
+            question: User question.
+
+        Returns:
+            True when a gate is configured and classifies the question as out
+            of scope for the docs corpus; False otherwise.
+        """
+        if self.relevance_gate is None:
+            return False
+        return not self.relevance_gate.is_relevant(question)
 
     def ask(self, question: str, top_k: int | None = None) -> QAResult:
         """Answer a user question with source citations.
@@ -154,6 +211,12 @@ class RAGQASystem:
             QA result with answer and citations.
         """
         logger.info("Processing question: %r", question[:100])
+        if self._is_out_of_scope(question):
+            return QAResult(
+                answer=_OUT_OF_SCOPE_ANSWER,
+                citations=[],
+                retrieved_chunks=[],
+            )
         chunks = self.retriever.retrieve(question, top_k=top_k)
         if not chunks:
             logger.warning("No chunks retrieved for question: %r", question[:100])
@@ -194,6 +257,14 @@ class RAGQASystem:
             Zero or more ``AnswerDelta`` items, then one terminal ``QAResult``.
         """
         logger.info("Processing question (stream): %r", question[:100])
+        if self._is_out_of_scope(question):
+            yield AnswerDelta(text=_OUT_OF_SCOPE_ANSWER)
+            yield QAResult(
+                answer=_OUT_OF_SCOPE_ANSWER,
+                citations=[],
+                retrieved_chunks=[],
+            )
+            return
         chunks = self.retriever.retrieve(question, top_k=top_k)
         if not chunks:
             logger.warning("No chunks retrieved for question: %r", question[:100])

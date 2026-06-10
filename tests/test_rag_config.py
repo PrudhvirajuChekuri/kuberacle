@@ -37,6 +37,9 @@ def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):
         "citation:\n"
         "  strict_used_only: true\n"
         "  deduplicate: true\n"
+        "gate:\n"
+        "  enabled: true\n"
+        "  model: gemini-2.5-flash\n"
         "prompts:\n"
         "  version: v1\n"
         "  directory: configs/prompts\n"
@@ -76,6 +79,8 @@ def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):
     assert config.reranker_ranking_config == "default_ranking_config"
     assert config.reranker_model == "semantic-ranker-default@latest"
     assert config.prompt_version == "v1"
+    assert config.gate_enabled is True
+    assert config.gate_model_id == "gemini-2.5-flash"
     assert config.max_tokens == 500
     assert config.evaluation_dataset_path == "evals/golden/v2.jsonl"
     assert config.eval_retrieval_recall_at_k_threshold == 0.90
@@ -92,6 +97,30 @@ def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):
     assert config.eval_answer_relevancy_judge_model == "gemini-2.5-flash"
     assert config.eval_answer_relevancy_embedding_model == "gemini-embedding-001"
     assert config.eval_answer_relevancy_min_parsed == 8
+
+
+def test_load_rag_config_gate_defaults(tmp_path, monkeypatch):
+    """Without a gate section, the gate is disabled and reuses the generation model."""
+    monkeypatch.setenv("GCP_PROJECT", "test-project")
+    monkeypatch.setenv("GCP_LOCATION", "us-central1")
+
+    config_path = tmp_path / "rag.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  embedding: gemini-embedding-001\n"
+        "  generation: gemini-2.5-flash-lite\n"
+        "vector_store:\n"
+        "  collection_name: k8s_docs_chunks_gemini\n"
+        "  persist_directory: data/vector/chroma_gemini\n"
+        "generation:\n"
+        "  temperature: 0.2\n"
+        "  max_tokens: 600\n"
+    )
+
+    config = load_rag_config(config_path)
+
+    assert config.gate_enabled is False
+    assert config.gate_model_id == "gemini-2.5-flash-lite"
 
 
 def test_load_rag_config_raises_without_gcp_project(tmp_path, monkeypatch):

@@ -32,6 +32,8 @@ class RAGConfig:
         reranker_model: Discovery Engine ranker model string.
         citation_strict_used_only: Whether to filter citations by used refs.
         citation_deduplicate: Whether to deduplicate citations by chunk_id.
+        gate_enabled: Whether the pre-retrieval relevance gate is enabled.
+        gate_model_id: Vertex AI model id used by the relevance gate.
         prompt_version: Prompt config version.
         prompt_directory: Prompt root directory.
         temperature: Generation temperature.
@@ -73,6 +75,8 @@ class RAGConfig:
     reranker_enabled: bool
     citation_strict_used_only: bool
     citation_deduplicate: bool
+    gate_enabled: bool
+    gate_model_id: str
     prompt_version: str
     prompt_directory: str
     temperature: float
@@ -125,6 +129,7 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
     retrieval = data.get("retrieval", {})
     reranker = data.get("reranker", {})
     citation = data.get("citation", {})
+    gate = data.get("gate", {})
     prompts = data.get("prompts", {})
     evaluation = data.get("evaluation", {})
 
@@ -179,6 +184,8 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
         reranker_enabled=reranker.get("enabled", False),
         citation_strict_used_only=citation.get("strict_used_only", True),
         citation_deduplicate=citation.get("deduplicate", True),
+        gate_enabled=gate.get("enabled", False),
+        gate_model_id=gate.get("model", generation_model_id),
         prompt_version=prompts.get("version", "v1"),
         prompt_directory=prompts.get("directory", "configs/prompts"),
         temperature=temperature,

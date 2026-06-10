@@ -16,7 +16,7 @@ retrieval:
   final_top_k: 5
   hybrid_weight_semantic: 0.6
   hybrid_weight_lexical: 0.4
-  min_evidence_score: 0.2
+  min_evidence_score: 0.3
   min_supporting_chunks: 1
 
 reranker:
@@ -28,8 +28,12 @@ citation:
   strict_used_only: true
   deduplicate: true
 
+gate:
+  enabled: true
+  model: "gemini-2.5-flash-lite"
+
 prompts:
-  version: "v1"
+  version: "v2"
   directory: "configs/prompts"
 
 generation:

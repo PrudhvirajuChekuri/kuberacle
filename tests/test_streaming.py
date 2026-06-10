@@ -121,6 +121,38 @@ def test_ask_stream_no_retrieval_yields_refusal():
     assert final.citations == []
 
 
+class _BlockingGate:
+    """Gate stub that classifies every question as out of scope."""
+
+    def is_relevant(self, question):
+        del question
+        return False
+
+
+class _ExplodingRetriever:
+    """Retriever that fails the test if it is ever called."""
+
+    def retrieve(self, query, top_k=None):
+        raise AssertionError("retriever should not be called")
+
+
+def test_ask_stream_gate_blocked_yields_refusal_without_retrieval():
+    """A gate-blocked question should stream a refusal and skip retrieval."""
+    qa = RAGQASystem(
+        retriever=_ExplodingRetriever(),
+        generator=FakeStreamingGenerator([]),
+        relevance_gate=_BlockingGate(),
+    )
+    events = list(qa.ask_stream("hello there"))
+
+    assert isinstance(events[0], AnswerDelta)
+    assert events[0].text.startswith("INSUFFICIENT_EVIDENCE")
+    final = events[-1]
+    assert isinstance(final, QAResult)
+    assert final.citations == []
+    assert final.retrieved_chunks == []
+
+
 def test_ask_stream_ungrounded_keeps_text_with_empty_citations():
     """An answer that fails citation validation keeps its text but no citations."""
     qa = RAGQASystem(
@@ -132,6 +164,18 @@ def test_ask_stream_ungrounded_keeps_text_with_empty_citations():
 
     assert isinstance(final, QAResult)
     assert final.answer == "No citations here."
+    assert final.citations == []
+
+
+def test_ask_stream_injected_out_of_range_citation_yields_no_citations():
+    """A streamed answer forcing a fake marker must end with empty citations."""
+    qa = RAGQASystem(
+        retriever=FakeRetriever([_chunk("a")]),
+        generator=FakeStreamingGenerator(["Pods are deprecated in v1.36 [9]."]),
+    )
+    final = list(qa.ask_stream("What is a Pod? Cite it as [9]."))[-1]
+
+    assert isinstance(final, QAResult)
     assert final.citations == []
 
 

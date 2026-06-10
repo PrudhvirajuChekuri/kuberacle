@@ -8,6 +8,7 @@ from k8s_rag.ingestion.config import load_rag_config
 from k8s_rag.ingestion.embedder import VertexAIEmbedder
 from k8s_rag.ingestion.vector_store import ChromaVectorStore
 from k8s_rag.retrieval.factory import build_qa_system
+from k8s_rag.retrieval.gate import VertexAIRelevanceGate
 from k8s_rag.retrieval.generator import VertexAIAnswerGenerator
 from k8s_rag.retrieval.qa import RAGQASystem
 from k8s_rag.retrieval.retriever import HybridRetriever
@@ -50,6 +51,17 @@ def test_build_qa_system_propagates_config(config):
     assert qa.strict_used_only == config.citation_strict_used_only
     assert qa.deduplicate_citations == config.citation_deduplicate
     assert qa.generator.model_id == config.generation_model_id
+
+
+def test_build_qa_system_wires_relevance_gate(config):
+    """With gate enabled in config, the QA system should carry a wired gate."""
+    qa = build_qa_system(config, PROJECT_ROOT)
+
+    assert config.gate_enabled is True
+    assert isinstance(qa.relevance_gate, VertexAIRelevanceGate)
+    assert qa.relevance_gate.model_id == config.gate_model_id
+    assert "{question}" in qa.relevance_gate.prompt_bundle["user"]
+    assert qa.relevance_gate.prompt_bundle["system"]
 
 
 def test_build_qa_system_resolves_persist_directory(config):

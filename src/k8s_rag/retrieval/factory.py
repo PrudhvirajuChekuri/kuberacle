@@ -6,8 +6,9 @@ from k8s_rag.ingestion.config import RAGConfig
 from k8s_rag.ingestion.embedder import VertexAIEmbedder
 from k8s_rag.ingestion.vector_store import ChromaVectorStore
 from k8s_rag.retrieval.bm25 import BM25Retriever
+from k8s_rag.retrieval.gate import VertexAIRelevanceGate
 from k8s_rag.retrieval.generator import VertexAIAnswerGenerator
-from k8s_rag.retrieval.prompts import load_prompt_bundle
+from k8s_rag.retrieval.prompts import load_gate_prompt, load_prompt_bundle
 from k8s_rag.retrieval.qa import RAGQASystem
 from k8s_rag.retrieval.reranker import DiscoveryEngineReranker
 from k8s_rag.retrieval.retriever import HybridRetriever, SemanticRetriever
@@ -17,7 +18,8 @@ def build_qa_system(config: RAGConfig, project_root: Path) -> RAGQASystem:
     """Wire the full hybrid retrieval + generation pipeline from config.
 
     Builds the embedder, vector store, semantic and BM25 retrievers, reranker,
-    hybrid retriever, prompt bundle, and answer generator, then composes them
+    hybrid retriever, prompt bundle, answer generator, and the optional
+    pre-retrieval relevance gate, then composes them
     into a ready-to-query ``RAGQASystem``. The BM25 index is built eagerly from
     all stored chunks, so callers should construct this once and reuse it.
 
@@ -75,6 +77,18 @@ def build_qa_system(config: RAGConfig, project_root: Path) -> RAGQASystem:
         max_tokens=config.max_tokens,
         prompt_bundle=prompt_bundle,
     )
+    relevance_gate = None
+    if config.gate_enabled:
+        gate_prompt = load_gate_prompt(
+            base_dir=str(project_root / config.prompt_directory),
+            version=config.prompt_version,
+        )
+        relevance_gate = VertexAIRelevanceGate(
+            model_id=config.gate_model_id,
+            gcp_project=config.gcp_project,
+            gcp_location=config.gcp_location,
+            prompt_bundle=gate_prompt,
+        )
     return RAGQASystem(
         retriever=retriever,
         generator=generator,
@@ -82,4 +96,5 @@ def build_qa_system(config: RAGConfig, project_root: Path) -> RAGQASystem:
         min_supporting_chunks=config.min_supporting_chunks,
         strict_used_only=config.citation_strict_used_only,
         deduplicate_citations=config.citation_deduplicate,
+        relevance_gate=relevance_gate,
     )

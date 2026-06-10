@@ -44,7 +44,7 @@ export function ChatInput({ onSend, onStop, isStreaming, big, placeholder }: Cha
         rows={1}
         className={cn(
           "max-h-40 min-h-0 flex-1 resize-none border-0 bg-transparent text-foreground outline-none placeholder:text-text-3",
-          big ? "py-1.5 text-[16.5px]" : "py-1 text-[15px]",
+          big ? "py-1.5 text-[16.5px]" : "py-1 text-[16px]",
         )}
       />
       {isStreaming ? (

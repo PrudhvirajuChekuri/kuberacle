@@ -48,7 +48,7 @@ export function CitationCard({ citation, anchorId, active }: CitationCardProps) 
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        "group block rounded-[11px] border border-border bg-card p-4 transition hover:-translate-y-px hover:border-brand-line",
+        "group block min-w-0 rounded-[11px] border border-border bg-card p-4 transition hover:-translate-y-px hover:border-brand-line",
         active && "border-primary shadow-[0_0_0_1px_var(--primary)]",
       )}
     >
@@ -58,7 +58,7 @@ export function CitationCard({ citation, anchorId, active }: CitationCardProps) 
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <span className="text-[13.5px] font-semibold leading-tight text-foreground">
+            <span className="min-w-0 flex-1 break-words text-[13.5px] font-semibold leading-tight text-foreground">
               {title}
             </span>
             <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-3 transition-colors group-hover:text-primary" />
@@ -73,9 +73,6 @@ export function CitationCard({ citation, anchorId, active }: CitationCardProps) 
           )}
           <div className="mt-2.5 flex items-center gap-2.5 font-mono text-[11px] text-text-3">
             <span>kubernetes.io</span>
-            <span className="rounded border border-border px-1.5 py-px">
-              relevance {(citation.score * 100).toFixed(0)}%
-            </span>
           </div>
         </div>
       </div>
