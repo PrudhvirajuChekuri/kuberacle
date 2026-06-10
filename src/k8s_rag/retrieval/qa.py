@@ -53,14 +53,41 @@ def _chunk_title(metadata: Mapping[str, Any]) -> str:
     return str(metadata.get("title", ""))
 
 
+_ADMONITION_RE = re.compile(
+    r"^(?:NOTE|TIP|INFO|WARNING|CAUTION|ALERT|DANGER|FEATURE STATE):\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_inline_markup(text: str) -> str:
+    """Remove inline Markdown emphasis and code markers, keeping the text.
+
+    Drops backticks and asterisk emphasis unconditionally; for underscores,
+    only strips emphasis used at word boundaries (``_word_``) so identifiers
+    such as ``revision_history_limit`` are left intact.
+
+    Args:
+        text: A single line of text.
+
+    Returns:
+        The line with inline emphasis and code markers removed.
+    """
+    text = text.replace("`", "")
+    text = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", text)
+    text = re.sub(r"(?<![A-Za-z0-9_])_{1,3}([^_]+?)_{1,3}(?![A-Za-z0-9_])", r"\1", text)
+    return text
+
+
 def _make_snippet(content: str, limit: int = 200, title: str = "") -> str:
     """Build a short, single-line preview snippet from chunk content.
 
-    Strips leading Markdown markers (headings, blockquotes, list bullets) and a
-    leading ``[Heading]`` marker line by line, collapses whitespace, and
-    truncates to ``limit`` characters with an ellipsis. Skips a leading line that
-    merely repeats ``title`` (the chunk's section heading shown above the
-    snippet), so the preview starts at the body rather than echoing the title.
+    Drops fenced code blocks entirely, strips leading Markdown markers
+    (headings, blockquotes, list bullets), a leading ``[Heading]`` breadcrumb
+    marker, leading admonition labels (``NOTE:``/``ALERT:``/...), and inline
+    emphasis/code markers, line by line. Collapses whitespace and truncates to
+    ``limit`` characters with an ellipsis. Skips a leading line that merely
+    repeats ``title`` (the chunk's section heading shown above the snippet), so
+    the preview starts at the body rather than echoing the title.
 
     Args:
         content: Raw chunk text content.
@@ -73,18 +100,28 @@ def _make_snippet(content: str, limit: int = 200, title: str = "") -> str:
     """
     title_norm = title.strip().casefold()
     cleaned: list[str] = []
+    in_fence = False
     for line in content.splitlines():
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
         stripped = re.sub(r"^\s*[#>*+\-]+\s+", "", line).strip()
         if stripped.startswith("["):
             end = stripped.find("]")
             if end != -1:
                 stripped = stripped[end + 1 :].strip()
+        stripped = _ADMONITION_RE.sub("", stripped).strip()
         if not stripped:
             continue
         if not cleaned and title_norm and stripped.casefold() == title_norm:
             continue
         cleaned.append(stripped)
+    # Strip inline emphasis on the joined text so emphasis pairs that span
+    # multiple source lines (e.g. a multi-line italic blurb) are matched.
     text = " ".join(" ".join(cleaned).split())
+    text = " ".join(_strip_inline_markup(text).split())
     if len(text) > limit:
         text = text[:limit].rstrip() + "…"
     return text

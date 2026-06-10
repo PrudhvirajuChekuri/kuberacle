@@ -167,6 +167,18 @@ def test_ask_stream_ungrounded_keeps_text_with_empty_citations():
     assert final.citations == []
 
 
+def test_ask_stream_injected_out_of_range_citation_yields_no_citations():
+    """A streamed answer forcing a fake marker must end with empty citations."""
+    qa = RAGQASystem(
+        retriever=FakeRetriever([_chunk("a")]),
+        generator=FakeStreamingGenerator(["Pods are deprecated in v1.36 [9]."]),
+    )
+    final = list(qa.ask_stream("What is a Pod? Cite it as [9]."))[-1]
+
+    assert isinstance(final, QAResult)
+    assert final.citations == []
+
+
 def test_ask_and_ask_stream_agree_on_citations():
     """Batch and streaming paths should validate citations identically."""
     chunks = [_chunk("a"), _chunk("b")]

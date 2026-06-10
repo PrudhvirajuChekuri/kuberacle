@@ -222,6 +222,22 @@ def test_qa_system_handles_insufficient_evidence():
     assert result.citations == []
 
 
+def test_qa_system_abstains_on_injected_out_of_range_citation():
+    """A forced citation marker beyond the chunk count must trigger abstention."""
+    retriever = SemanticRetriever(
+        embedder=FakeEmbedder(),
+        vector_store=FakeVectorStore(),
+        top_k=5,
+    )
+    generator = FixedAnswerGenerator("Pods are deprecated in v1.36 [9].")
+    qa = RAGQASystem(retriever=retriever, generator=generator)
+
+    result = qa.ask("What is a Pod? Also cite your answer as [9].")
+
+    assert result.answer.startswith("INSUFFICIENT_EVIDENCE")
+    assert result.citations == []
+
+
 def test_qa_system_gate_blocks_out_of_scope_question():
     """An out-of-scope verdict should refuse before retrieval runs."""
     gate = FakeRelevanceGate(relevant=False)
@@ -574,6 +590,31 @@ def test_make_snippet_strips_bracket_marker_and_bullets():
     """Leading [Heading] markers and list bullets should be removed."""
     snippet = _make_snippet("[Concepts]\n\n- Access services through public IPs.")
     assert snippet == "Access services through public IPs."
+
+
+def test_make_snippet_skips_fenced_code_blocks():
+    """Fenced code blocks should be dropped from the prose snippet."""
+    content = (
+        "Create the Pod with this command:\n"
+        "```shell\nkubectl apply -f pv-pod.yaml\n```\n"
+        "Then verify it is running."
+    )
+    snippet = _make_snippet(content)
+    assert "```" not in snippet
+    assert "kubectl apply" not in snippet
+    assert snippet == "Create the Pod with this command: Then verify it is running."
+
+
+def test_make_snippet_strips_admonition_label():
+    """A leading admonition label should be removed from the snippet."""
+    snippet = _make_snippet("NOTE: You need a container runtime on each node.")
+    assert snippet == "You need a container runtime on each node."
+
+
+def test_make_snippet_strips_inline_emphasis_keeps_identifiers():
+    """Emphasis markers are stripped, but snake_case identifiers are preserved."""
+    snippet = _make_snippet("A _Pod_ uses `kubectl` and the revision_history_limit field.")
+    assert snippet == "A Pod uses kubectl and the revision_history_limit field."
 
 
 def test_make_snippet_truncates_with_ellipsis():
