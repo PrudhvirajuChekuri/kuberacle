@@ -30,12 +30,15 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 WORKDIR /app
 
+# Run as a non-root user. Create it before copying so the Chroma index can be
+# owned by it: ChromaDB opens the sqlite index read-write, so the directory must
+# be writable by the runtime user.
+RUN useradd --create-home --uid 10001 appuser
+
 # Runtime assets: config + prompts and the prebuilt Chroma index (baked in).
 COPY configs ./configs
-COPY data/vector/chroma_gemini ./data/vector/chroma_gemini
+COPY --chown=appuser:appuser data/vector/chroma_gemini ./data/vector/chroma_gemini
 
-# Run as a non-root user; the baked index is read-only at runtime.
-RUN useradd --create-home --uid 10001 appuser
 USER appuser
 
 EXPOSE 8000
