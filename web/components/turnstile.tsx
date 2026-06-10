@@ -75,7 +75,15 @@ export function TurnstileProvider({ children }: { children: ReactNode }) {
       sitekey: SITE_KEY,
       execution: "execute",
       appearance: "interaction-only",
-      callback: (token) => settle((r) => r.resolve(token)),
+      callback: (token) => {
+        settle((r) => r.resolve(token));
+        // Return the widget to its idle (hidden) state so the success
+        // confirmation does not linger on screen after the token is captured.
+        if (window.turnstile && widgetIdRef.current) {
+          window.turnstile.reset(widgetIdRef.current);
+        }
+        executedRef.current = false;
+      },
       "error-callback": () =>
         settle((r) => r.reject(new Error("Verification failed. Please try again."))),
       "expired-callback": () =>
