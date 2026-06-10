@@ -27,3 +27,26 @@ def test_enabled_requires_secrets(monkeypatch):
     monkeypatch.delenv("GCP_PROJECT", raising=False)
     with pytest.raises(RuntimeError):
         load_guardrail_settings()
+
+
+def test_enabled_requires_turnstile_hostnames(monkeypatch):
+    """Enabling guardrails without TURNSTILE_HOSTNAMES raises (fail-closed)."""
+    monkeypatch.setenv("GUARDRAILS_ENABLED", "true")
+    monkeypatch.setenv("TURNSTILE_SECRET", "secret")
+    monkeypatch.setenv("IP_HASH_SALT", "salt")
+    monkeypatch.setenv("GCP_PROJECT", "p")
+    monkeypatch.delenv("TURNSTILE_HOSTNAMES", raising=False)
+    with pytest.raises(RuntimeError, match="TURNSTILE_HOSTNAMES"):
+        load_guardrail_settings()
+
+
+def test_enabled_passes_with_all_required(monkeypatch):
+    """All required vars present yields settings without raising."""
+    monkeypatch.setenv("GUARDRAILS_ENABLED", "true")
+    monkeypatch.setenv("TURNSTILE_SECRET", "secret")
+    monkeypatch.setenv("IP_HASH_SALT", "salt")
+    monkeypatch.setenv("GCP_PROJECT", "p")
+    monkeypatch.setenv("TURNSTILE_HOSTNAMES", "kuberacle.dev")
+    settings = load_guardrail_settings()
+    assert settings.enabled is True
+    assert settings.turnstile_hostnames == ("kuberacle.dev",)

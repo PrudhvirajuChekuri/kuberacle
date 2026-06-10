@@ -13,6 +13,8 @@ function readK8sVersion(): string {
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Drop the framework-fingerprinting X-Powered-By response header.
+  poweredByHeader: false,
   env: {
     NEXT_PUBLIC_K8S_VERSION: readK8sVersion(),
   },

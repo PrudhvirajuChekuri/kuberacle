@@ -68,14 +68,23 @@ def load_guardrail_settings() -> GuardrailSettings:
     turnstile_secret = os.environ.get("TURNSTILE_SECRET", "")
     ip_hash_salt = os.environ.get("IP_HASH_SALT", "")
     gcp_project = os.environ.get("GCP_PROJECT", "")
+    hostnames = tuple(
+        h.strip()
+        for h in os.environ.get("TURNSTILE_HOSTNAMES", "").split(",")
+        if h.strip()
+    )
 
     if enabled:
+        # TURNSTILE_HOSTNAMES is required so an enabled deploy cannot silently
+        # run with hostname checking disabled (which would allow tokens farmed
+        # on another allowed host using the public site key).
         missing = [
             name
             for name, value in (
                 ("TURNSTILE_SECRET", turnstile_secret),
                 ("IP_HASH_SALT", ip_hash_salt),
                 ("GCP_PROJECT", gcp_project),
+                ("TURNSTILE_HOSTNAMES", hostnames),
             )
             if not value
         ]
@@ -84,12 +93,6 @@ def load_guardrail_settings() -> GuardrailSettings:
                 "Guardrails are enabled but required environment variables are "
                 f"missing: {', '.join(missing)}."
             )
-
-    hostnames = tuple(
-        h.strip()
-        for h in os.environ.get("TURNSTILE_HOSTNAMES", "").split(",")
-        if h.strip()
-    )
 
     return GuardrailSettings(
         enabled=enabled,

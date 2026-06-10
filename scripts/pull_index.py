@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+import os
 import shutil
 import tarfile
 import tempfile
@@ -102,7 +103,9 @@ def main() -> None:
             "Run workflow_dispatch to rebuild and re-publish the index."
         )
 
-    tmp_path = Path(tempfile.mktemp(suffix=".tar.gz"))
+    tmp_fd, tmp_name = tempfile.mkstemp(suffix=".tar.gz")
+    os.close(tmp_fd)
+    tmp_path = Path(tmp_name)
     try:
         logger.info("Downloading gs://%s/%s", args.bucket, args.object)
         blob = bucket.blob(args.object)
@@ -114,7 +117,9 @@ def main() -> None:
         index_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info("Extracting to %s", index_path.parent)
         with tarfile.open(tmp_path, "r:gz") as tar:
-            tar.extractall(index_path.parent)
+            # filter="data" blocks path-traversal and unsafe members in case the
+            # published artifact is ever tampered with.
+            tar.extractall(index_path.parent, filter="data")
         logger.info("Index ready at %s", index_path)
     finally:
         tmp_path.unlink(missing_ok=True)

@@ -47,6 +47,14 @@ async function authHeader(): Promise<Record<string, string>> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // Reject by declared size before buffering, so an oversized body never lands
+  // in the web process's memory; fall back to a post-read length check for
+  // requests that omit or understate Content-Length.
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    return sseError("Question is too long.", 413);
+  }
+
   const body = await request.text();
 
   if (body.length > MAX_BODY_BYTES) {

@@ -35,3 +35,10 @@ data/includes/
 HANDOFF.md
 CLAUDE.md
 design/
+
+# Local-only artifacts and the release index tarball (never needed in an image;
+# excluded to keep the build context small)
+artifacts/
+.claude/
+.benchmarks/
+chroma-index.tar.gz
