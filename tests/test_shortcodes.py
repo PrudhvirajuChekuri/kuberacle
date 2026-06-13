@@ -3,7 +3,7 @@
 import pytest
 from collections import Counter
 
-from k8s_rag.preprocessing.shortcodes import (
+from kuberacle.preprocessing.shortcodes import (
     resolve_glossary_tooltips,
     resolve_glossary_definitions,
     resolve_notes,

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from k8s_rag.ingestion.schemas import ChunkRecord, RetrievedChunk
+from kuberacle.ingestion.schemas import ChunkRecord, RetrievedChunk
 
 logger = logging.getLogger(__name__)
 

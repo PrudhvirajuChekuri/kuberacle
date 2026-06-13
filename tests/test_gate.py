@@ -1,7 +1,7 @@
 """Tests for the pre-retrieval relevance gate."""
 
-from k8s_rag.retrieval.gate import ScopeLabel, VertexAIRelevanceGate
-from k8s_rag.retrieval.prompts import load_gate_prompt
+from kuberacle.retrieval.gate import ScopeLabel, VertexAIRelevanceGate
+from kuberacle.retrieval.prompts import load_gate_prompt
 
 
 PROMPT_BUNDLE = {

@@ -5,8 +5,8 @@ The siteverify HTTP call is stubbed; no network requests are made.
 
 import requests
 
-from k8s_rag.api import turnstile
-from k8s_rag.api.turnstile import verify_turnstile
+from kuberacle.api import turnstile
+from kuberacle.api.turnstile import verify_turnstile
 
 
 class FakeResponse:

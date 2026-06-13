@@ -1,4 +1,4 @@
-# k8s-docs-rag
+# kuberacle
 
 A production-grade Retrieval Augmented Generation (RAG) system for Kubernetes documentation.
 

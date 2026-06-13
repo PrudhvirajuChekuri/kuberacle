@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 
-from k8s_rag.evaluation.runner import EvaluationCaseResult
+from kuberacle.evaluation.runner import EvaluationCaseResult
 
 logger = logging.getLogger(__name__)
 

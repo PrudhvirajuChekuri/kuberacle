@@ -2,17 +2,17 @@
 
 import json
 
-from k8s_rag.evaluation.ragas_metrics import (
+from kuberacle.evaluation.ragas_metrics import (
     AnswerRelevancyResult,
     ContextPrecisionResult,
     FaithfulnessResult,
 )
-from k8s_rag.evaluation.report import (
+from kuberacle.evaluation.report import (
     build_markdown_summary,
     write_json_report,
     write_markdown_summary,
 )
-from k8s_rag.evaluation.runner import EvaluationCaseResult, EvaluationSummary
+from kuberacle.evaluation.runner import EvaluationCaseResult, EvaluationSummary
 
 
 def _make_summary(pass_gate: bool = True, failed_thresholds=None) -> EvaluationSummary:

@@ -1,6 +1,6 @@
 """Tests for the link resolution module."""
 
-from k8s_rag.preprocessing.links import (
+from kuberacle.preprocessing.links import (
     resolve_relative_links,
     extract_cross_references,
     strip_links_to_text,

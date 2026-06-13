@@ -7,7 +7,7 @@ from typing import Any
 
 from tqdm import tqdm
 
-from k8s_rag.ingestion.schemas import ChunkRecord
+from kuberacle.ingestion.schemas import ChunkRecord
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
-from k8s_rag.ingestion.schemas import RetrievedChunk
+from kuberacle.ingestion.schemas import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 

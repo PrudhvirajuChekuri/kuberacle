@@ -12,10 +12,10 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from k8s_rag.ingestion.config import load_rag_config
-from k8s_rag.ingestion.embedder import VertexAIEmbedder
-from k8s_rag.ingestion.pipeline import IngestionPipeline
-from k8s_rag.ingestion.vector_store import ChromaVectorStore
+from kuberacle.ingestion.config import load_rag_config
+from kuberacle.ingestion.embedder import VertexAIEmbedder
+from kuberacle.ingestion.pipeline import IngestionPipeline
+from kuberacle.ingestion.vector_store import ChromaVectorStore
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

@@ -1,4 +1,4 @@
-# Backend image for the k8s-docs-rag FastAPI service.
+# Backend image for the kuberacle FastAPI service.
 # Multi-stage: install dependencies into a venv, then copy into a slim runtime.
 # The Chroma index is baked in; GCP credentials are provided at runtime, never here.
 
@@ -44,4 +44,4 @@ USER appuser
 EXPOSE 8000
 
 # Bind 0.0.0.0 so the service is reachable from outside the container.
-CMD ["uvicorn", "k8s_rag.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "kuberacle.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

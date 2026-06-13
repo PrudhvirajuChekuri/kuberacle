@@ -4,12 +4,12 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from k8s_rag.evaluation.ragas_metrics import (
+from kuberacle.evaluation.ragas_metrics import (
     AnswerRelevancyResult,
     ContextPrecisionResult,
     FaithfulnessResult,
 )
-from k8s_rag.evaluation.runner import EvaluationSummary
+from kuberacle.evaluation.runner import EvaluationSummary
 
 
 def write_json_report(summary: EvaluationSummary, output_path: str | Path) -> None:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from k8s_rag.api.settings import load_guardrail_settings
+from kuberacle.api.settings import load_guardrail_settings
 
 
 def test_turnstile_hostnames_parsed_from_env(monkeypatch):

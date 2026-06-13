@@ -1,6 +1,6 @@
 """Tests for deterministic evaluation metrics."""
 
-from k8s_rag.evaluation.metrics import (
+from kuberacle.evaluation.metrics import (
     is_insufficient_evidence,
     mean_reciprocal_rank,
     non_empty_answer,

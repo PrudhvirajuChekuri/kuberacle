@@ -7,8 +7,8 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from k8s_rag.ingestion.schemas import RetrievedChunk
-from k8s_rag.retrieval.generator import extract_citation_indices
+from kuberacle.ingestion.schemas import RetrievedChunk
+from kuberacle.retrieval.generator import extract_citation_indices
 
 logger = logging.getLogger(__name__)
 

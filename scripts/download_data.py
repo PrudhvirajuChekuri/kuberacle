@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 import yaml
 from tqdm import tqdm
 
-from k8s_rag.preprocessing.page_selection import resolve_pages, _owner_repo_from_url
+from kuberacle.preprocessing.page_selection import resolve_pages, _owner_repo_from_url
 
 
 # Repository root (assumes script is run from project root)
@@ -68,7 +68,7 @@ def fetch_file(url: str, quiet: bool = False) -> str | None:
     retries = 3
     for attempt in range(1, retries + 1):
         try:
-            request = Request(url, headers={"User-Agent": "k8s-docs-rag"})
+            request = Request(url, headers={"User-Agent": "kuberacle"})
             with urlopen(request, timeout=15) as response:
                 return response.read().decode("utf-8")
         except HTTPError as e:

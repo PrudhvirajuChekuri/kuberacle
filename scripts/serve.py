@@ -11,7 +11,7 @@ import uvicorn
 
 def parse_args() -> argparse.Namespace:
     """Parse server CLI arguments."""
-    parser = argparse.ArgumentParser(description="Serve the k8s-docs RAG API")
+    parser = argparse.ArgumentParser(description="Serve the kuberacle API")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     parser.add_argument(
@@ -26,7 +26,7 @@ def main() -> None:
     """Start the uvicorn server for the RAG API app."""
     args = parse_args()
     uvicorn.run(
-        "k8s_rag.api.app:app",
+        "kuberacle.api.app:app",
         host=args.host,
         port=args.port,
         reload=args.reload,

@@ -9,9 +9,9 @@ import hashlib
 import logging
 from collections.abc import Callable
 
-from k8s_rag.api.counters import FirestoreCounters
-from k8s_rag.api.settings import GuardrailSettings
-from k8s_rag.api.turnstile import verify_turnstile
+from kuberacle.api.counters import FirestoreCounters
+from kuberacle.api.settings import GuardrailSettings
+from kuberacle.api.turnstile import verify_turnstile
 
 logger = logging.getLogger(__name__)
 

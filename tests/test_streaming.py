@@ -1,8 +1,8 @@
 """Tests for streaming generation and the QA streaming path."""
 
-from k8s_rag.ingestion.schemas import RetrievedChunk
-from k8s_rag.retrieval.generator import VertexAIAnswerGenerator
-from k8s_rag.retrieval.qa import AnswerDelta, QAResult, RAGQASystem
+from kuberacle.ingestion.schemas import RetrievedChunk
+from kuberacle.retrieval.generator import VertexAIAnswerGenerator
+from kuberacle.retrieval.qa import AnswerDelta, QAResult, RAGQASystem
 
 
 def _chunk(chunk_id: str, score: float = 0.9) -> RetrievedChunk:

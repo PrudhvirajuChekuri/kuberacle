@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from k8s_rag.ingestion.config import load_rag_config
-from k8s_rag.ingestion.embedder import VertexAIEmbedder
-from k8s_rag.ingestion.vector_store import ChromaVectorStore
-from k8s_rag.retrieval.factory import build_qa_system
-from k8s_rag.retrieval.gate import VertexAIRelevanceGate
-from k8s_rag.retrieval.generator import VertexAIAnswerGenerator
-from k8s_rag.retrieval.qa import RAGQASystem
-from k8s_rag.retrieval.retriever import HybridRetriever
+from kuberacle.ingestion.config import load_rag_config
+from kuberacle.ingestion.embedder import VertexAIEmbedder
+from kuberacle.ingestion.vector_store import ChromaVectorStore
+from kuberacle.retrieval.factory import build_qa_system
+from kuberacle.retrieval.gate import VertexAIRelevanceGate
+from kuberacle.retrieval.generator import VertexAIAnswerGenerator
+from kuberacle.retrieval.qa import RAGQASystem
+from kuberacle.retrieval.retriever import HybridRetriever
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

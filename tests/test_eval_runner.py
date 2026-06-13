@@ -1,9 +1,9 @@
 """Tests for offline evaluation runner and quality gates."""
 
-from k8s_rag.evaluation.dataset import GoldenExample
-from k8s_rag.evaluation.runner import EvaluationThresholds, evaluate_dataset
-from k8s_rag.ingestion.schemas import RetrievedChunk
-from k8s_rag.retrieval.qa import Citation, QAResult
+from kuberacle.evaluation.dataset import GoldenExample
+from kuberacle.evaluation.runner import EvaluationThresholds, evaluate_dataset
+from kuberacle.ingestion.schemas import RetrievedChunk
+from kuberacle.retrieval.qa import Citation, QAResult
 
 
 class StubQASystem:

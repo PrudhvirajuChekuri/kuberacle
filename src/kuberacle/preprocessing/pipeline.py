@@ -13,11 +13,11 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from k8s_rag.preprocessing.frontmatter import extract_metadata
-from k8s_rag.preprocessing.shortcodes import resolve_shortcodes
-from k8s_rag.preprocessing.links import process_links, strip_links_to_text, extract_cross_references
-from k8s_rag.preprocessing.structure import analyze_structure, estimate_tokens
-from k8s_rag.preprocessing.chunker import chunk_document
+from kuberacle.preprocessing.frontmatter import extract_metadata
+from kuberacle.preprocessing.shortcodes import resolve_shortcodes
+from kuberacle.preprocessing.links import process_links, strip_links_to_text, extract_cross_references
+from kuberacle.preprocessing.structure import analyze_structure, estimate_tokens
+from kuberacle.preprocessing.chunker import chunk_document
 
 
 _WHATSNEXT_RE = re.compile(
