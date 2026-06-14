@@ -2,9 +2,9 @@
 
 import pytest
 
-from k8s_rag.api.counters import Decision
-from k8s_rag.api.guardrails import GuardrailError, Guardrails, hash_ip
-from k8s_rag.api.settings import GuardrailSettings
+from kuberacle.api.counters import Decision
+from kuberacle.api.guardrails import GuardrailError, Guardrails, hash_ip
+from kuberacle.api.settings import GuardrailSettings
 
 
 def _settings() -> GuardrailSettings:

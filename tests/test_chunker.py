@@ -2,14 +2,14 @@
 
 import re
 
-from k8s_rag.preprocessing.chunker import (
+from kuberacle.preprocessing.chunker import (
     make_chunk_id,
     build_heading_tree,
     chunk_document,
     TARGET_TOKENS,
     HARD_CAP_TOKENS,
 )
-from k8s_rag.preprocessing.structure import analyze_structure, estimate_tokens
+from kuberacle.preprocessing.structure import analyze_structure, estimate_tokens
 
 
 # --- make_chunk_id ---

@@ -2,7 +2,7 @@
 
 import pytest
 
-from k8s_rag.preprocessing.page_selection import (
+from kuberacle.preprocessing.page_selection import (
     _owner_repo_from_url,
     _fetch_repo_tree,
     resolve_pages,
@@ -29,7 +29,7 @@ def test_owner_repo_from_url_rejects_ssh():
 
 def test_fetch_repo_tree_raises_on_truncated(monkeypatch):
     """A truncated tree response must raise rather than silently drop pages."""
-    import k8s_rag.preprocessing.page_selection as mod
+    import kuberacle.preprocessing.page_selection as mod
 
     def fake_urlopen(*args, **kwargs):
         import io
@@ -80,7 +80,7 @@ def test_resolve_pages_discover_mode_uses_repo_tree(monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "k8s_rag.preprocessing.page_selection._fetch_repo_tree",
+        "kuberacle.preprocessing.page_selection._fetch_repo_tree",
         fake_fetch_tree,
     )
 

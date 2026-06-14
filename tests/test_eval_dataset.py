@@ -2,7 +2,7 @@
 
 import pytest
 
-from k8s_rag.evaluation.dataset import load_golden_dataset
+from kuberacle.evaluation.dataset import load_golden_dataset
 
 _VALID_ROW = '{"id":"q1","question":"What is a Pod?","expected_answer":"A Pod is the smallest deployable unit.","reference_chunk_ids":["c1"],"answerable":true,"tags":["concept"]}\n'
 _UNANSWERABLE_ROW = '{"id":"q2","question":"Unknown?","expected_answer":"No support.","reference_chunk_ids":[],"answerable":false,"tags":["abstention"]}\n'

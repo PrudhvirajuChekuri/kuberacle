@@ -3,8 +3,8 @@
 import logging
 from typing import Any
 
-from k8s_rag.ingestion.schemas import RetrievedChunk
-from k8s_rag.retrieval.constants import DISCOVERY_ENGINE_RANK_URL
+from kuberacle.ingestion.schemas import RetrievedChunk
+from kuberacle.retrieval.constants import DISCOVERY_ENGINE_RANK_URL
 
 logger = logging.getLogger(__name__)
 

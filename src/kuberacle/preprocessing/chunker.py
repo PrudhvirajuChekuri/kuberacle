@@ -7,7 +7,7 @@ atomic, and attaches rich metadata to each chunk.
 
 import logging
 import re
-from k8s_rag.preprocessing.structure import analyze_structure, classify_code_block, estimate_tokens
+from kuberacle.preprocessing.structure import analyze_structure, classify_code_block, estimate_tokens
 
 logger = logging.getLogger(__name__)
 

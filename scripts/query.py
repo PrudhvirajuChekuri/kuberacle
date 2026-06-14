@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from k8s_rag.ingestion.config import load_rag_config
-from k8s_rag.retrieval.factory import build_qa_system
+from kuberacle.ingestion.config import load_rag_config
+from kuberacle.retrieval.factory import build_qa_system
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -22,7 +22,7 @@ CONFIG_PATH = PROJECT_ROOT / "configs" / "rag.yaml"
 
 def parse_args() -> argparse.Namespace:
     """Parse query CLI arguments."""
-    parser = argparse.ArgumentParser(description="Ask k8s-docs RAG a question")
+    parser = argparse.ArgumentParser(description="Ask kuberacle a question")
     parser.add_argument("question", help="Question to ask")
     parser.add_argument("--top-k", type=int, default=None, help="Retrieval depth")
     parser.add_argument(

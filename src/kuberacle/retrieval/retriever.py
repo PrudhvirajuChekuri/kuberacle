@@ -3,10 +3,10 @@
 import logging
 from typing import Any
 
-from k8s_rag.ingestion.schemas import RetrievedChunk
-from k8s_rag.retrieval.bm25 import BM25Retriever
-from k8s_rag.retrieval.hybrid import merge_hybrid_candidates
-from k8s_rag.retrieval.reranker import DiscoveryEngineReranker
+from kuberacle.ingestion.schemas import RetrievedChunk
+from kuberacle.retrieval.bm25 import BM25Retriever
+from kuberacle.retrieval.hybrid import merge_hybrid_candidates
+from kuberacle.retrieval.reranker import DiscoveryEngineReranker
 
 logger = logging.getLogger(__name__)
 

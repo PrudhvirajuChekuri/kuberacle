@@ -5,7 +5,7 @@ A fake in-memory Firestore client exercises the transaction logic without the
 pure function.
 """
 
-from k8s_rag.api.counters import Decision, FirestoreCounters, _decide
+from kuberacle.api.counters import Decision, FirestoreCounters, _decide
 
 
 class FakeSnapshot:

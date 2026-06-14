@@ -7,9 +7,9 @@ stubbed instead.
 
 from fastapi.testclient import TestClient
 
-from k8s_rag.api.app import create_app
-from k8s_rag.api.guardrails import GuardrailError
-from k8s_rag.retrieval.qa import AnswerDelta, Citation, QAResult
+from kuberacle.api.app import create_app
+from kuberacle.api.guardrails import GuardrailError
+from kuberacle.retrieval.qa import AnswerDelta, Citation, QAResult
 
 
 class FakeQA:
@@ -103,7 +103,7 @@ def test_query_rejects_empty_question():
 
 def test_query_rejects_overlong_question():
     """A question past the length cap is rejected before any model call."""
-    from k8s_rag.api.schemas import MAX_QUESTION_LENGTH
+    from kuberacle.api.schemas import MAX_QUESTION_LENGTH
 
     resp = _client_with([]).post(
         "/query", json={"question": "a" * (MAX_QUESTION_LENGTH + 1)}

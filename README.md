@@ -1,4 +1,4 @@
-# k8s-docs-rag
+# kuberacle
 
 A production-grade Retrieval Augmented Generation (RAG) system for Kubernetes documentation.
 
@@ -167,7 +167,7 @@ The Chroma index is not stored in the repository. Download the prebuilt index bu
 
 ```bash
 curl -L -o chroma-index.tar.gz \
-  https://github.com/PrudhvirajuChekuri/k8s-docs-rag/releases/latest/download/chroma-index.tar.gz
+  https://github.com/PrudhvirajuChekuri/kuberacle/releases/latest/download/chroma-index.tar.gz
 tar -xzf chroma-index.tar.gz        # restores data/vector/chroma_gemini and data/k8s_version.txt
 ```
 

@@ -23,13 +23,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
-from k8s_rag.api.counters import FirestoreCounters
-from k8s_rag.api.guardrails import GuardrailError, Guardrails
-from k8s_rag.api.schemas import CitationModel, QueryRequest
-from k8s_rag.api.settings import load_guardrail_settings
-from k8s_rag.ingestion.config import load_rag_config
-from k8s_rag.retrieval.factory import build_qa_system
-from k8s_rag.retrieval.qa import AnswerDelta
+from kuberacle.api.counters import FirestoreCounters
+from kuberacle.api.guardrails import GuardrailError, Guardrails
+from kuberacle.api.schemas import CitationModel, QueryRequest
+from kuberacle.api.settings import load_guardrail_settings
+from kuberacle.ingestion.config import load_rag_config
+from kuberacle.retrieval.factory import build_qa_system
+from kuberacle.retrieval.qa import AnswerDelta
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ def create_app() -> FastAPI:
     """
     docs = _docs_enabled()
     app = FastAPI(
-        title="k8s-docs-rag API",
+        title="kuberacle API",
         lifespan=lifespan,
         docs_url="/docs" if docs else None,
         redoc_url="/redoc" if docs else None,

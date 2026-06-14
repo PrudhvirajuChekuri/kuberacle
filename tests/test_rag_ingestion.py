@@ -2,9 +2,9 @@
 
 import json
 
-from k8s_rag.ingestion.pipeline import IngestionPipeline
-from k8s_rag.ingestion.schemas import ChunkRecord
-from k8s_rag.ingestion.vector_store import ChromaVectorStore
+from kuberacle.ingestion.pipeline import IngestionPipeline
+from kuberacle.ingestion.schemas import ChunkRecord
+from kuberacle.ingestion.vector_store import ChromaVectorStore
 
 
 class FakeEmbedder:

@@ -1,6 +1,6 @@
 """Hybrid retrieval candidate merging utilities."""
 
-from k8s_rag.ingestion.schemas import RetrievedChunk
+from kuberacle.ingestion.schemas import RetrievedChunk
 
 
 def _normalize_scores(chunks: list[RetrievedChunk]) -> dict[str, float]:

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from k8s_rag.preprocessing.pipeline import (
+from kuberacle.preprocessing.pipeline import (
     process_page,
     run_pipeline,
     write_jsonl,
@@ -293,7 +293,7 @@ def test_run_pipeline_allows_empty_chunk_page(tmp_path, monkeypatch):
         return [], set()
 
     monkeypatch.setattr(
-        "k8s_rag.preprocessing.pipeline.process_page",
+        "kuberacle.preprocessing.pipeline.process_page",
         fake_process_page,
     )
 

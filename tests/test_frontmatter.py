@@ -2,7 +2,7 @@
 
 import pytest
 import yaml
-from k8s_rag.preprocessing.frontmatter import (
+from kuberacle.preprocessing.frontmatter import (
     parse_frontmatter,
     derive_metadata,
     extract_metadata,

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from k8s_rag.ingestion.config import load_rag_config
+from kuberacle.ingestion.config import load_rag_config
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

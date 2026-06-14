@@ -1,6 +1,6 @@
 # Kuberacle - Kubernetes Docs Web UI
 
-Kuberacle is a Next.js chat interface for the [k8s-docs-rag](../README.md) pipeline. It streams
+Kuberacle is a Next.js chat interface for the [kuberacle](../README.md) pipeline. It streams
 grounded answers token-by-token and renders citations as clickable source cards.
 
 ## Stack

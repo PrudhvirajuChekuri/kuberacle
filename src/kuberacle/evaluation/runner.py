@@ -8,8 +8,8 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-from k8s_rag.evaluation.dataset import GoldenExample
-from k8s_rag.evaluation.metrics import (
+from kuberacle.evaluation.dataset import GoldenExample
+from kuberacle.evaluation.metrics import (
     is_insufficient_evidence,
     mean_reciprocal_rank,
     non_empty_answer,

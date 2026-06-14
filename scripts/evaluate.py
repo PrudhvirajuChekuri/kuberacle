@@ -13,20 +13,20 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from k8s_rag.evaluation.dataset import load_golden_dataset
-from k8s_rag.evaluation.ragas_metrics import (
+from kuberacle.evaluation.dataset import load_golden_dataset
+from kuberacle.evaluation.ragas_metrics import (
     compute_answer_relevancy,
     compute_context_precision,
     compute_faithfulness,
 )
-from k8s_rag.evaluation.report import (
+from kuberacle.evaluation.report import (
     build_markdown_summary,
     write_json_report,
     write_markdown_summary,
 )
-from k8s_rag.evaluation.runner import EvaluationThresholds, evaluate_dataset
-from k8s_rag.ingestion.config import load_rag_config
-from k8s_rag.retrieval.factory import build_qa_system
+from kuberacle.evaluation.runner import EvaluationThresholds, evaluate_dataset
+from kuberacle.ingestion.config import load_rag_config
+from kuberacle.retrieval.factory import build_qa_system
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

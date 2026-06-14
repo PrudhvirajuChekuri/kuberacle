@@ -1,6 +1,6 @@
 """Tests for the structure analysis module."""
 
-from k8s_rag.preprocessing.structure import (
+from kuberacle.preprocessing.structure import (
     estimate_tokens,
     classify_code_block,
     analyze_structure,

@@ -1,6 +1,6 @@
 """Tests for RAGAS faithfulness and context precision metrics."""
 
-from k8s_rag.evaluation.ragas_metrics import (
+from kuberacle.evaluation.ragas_metrics import (
     AnswerRelevancyResult,
     ContextPrecisionResult,
     FaithfulnessResult,

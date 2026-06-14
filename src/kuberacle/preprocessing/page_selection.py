@@ -39,7 +39,7 @@ def _fetch_repo_tree(repo_url: str, branch: str) -> list[dict]:
     url = f"https://api.github.com/repos/{owner_repo}/git/trees/{branch}?recursive=1"
     headers = {
         "Accept": "application/vnd.github+json",
-        "User-Agent": "k8s-docs-rag",
+        "User-Agent": "kuberacle",
     }
     token = os.environ.get("GITHUB_TOKEN")
     if token:

@@ -2,16 +2,16 @@
 
 from pathlib import Path
 
-from k8s_rag.ingestion.config import RAGConfig
-from k8s_rag.ingestion.embedder import VertexAIEmbedder
-from k8s_rag.ingestion.vector_store import ChromaVectorStore
-from k8s_rag.retrieval.bm25 import BM25Retriever
-from k8s_rag.retrieval.gate import VertexAIRelevanceGate
-from k8s_rag.retrieval.generator import VertexAIAnswerGenerator
-from k8s_rag.retrieval.prompts import load_gate_prompt, load_prompt_bundle
-from k8s_rag.retrieval.qa import RAGQASystem
-from k8s_rag.retrieval.reranker import DiscoveryEngineReranker
-from k8s_rag.retrieval.retriever import HybridRetriever, SemanticRetriever
+from kuberacle.ingestion.config import RAGConfig
+from kuberacle.ingestion.embedder import VertexAIEmbedder
+from kuberacle.ingestion.vector_store import ChromaVectorStore
+from kuberacle.retrieval.bm25 import BM25Retriever
+from kuberacle.retrieval.gate import VertexAIRelevanceGate
+from kuberacle.retrieval.generator import VertexAIAnswerGenerator
+from kuberacle.retrieval.prompts import load_gate_prompt, load_prompt_bundle
+from kuberacle.retrieval.qa import RAGQASystem
+from kuberacle.retrieval.reranker import DiscoveryEngineReranker
+from kuberacle.retrieval.retriever import HybridRetriever, SemanticRetriever
 
 
 def build_qa_system(config: RAGConfig, project_root: Path) -> RAGQASystem:

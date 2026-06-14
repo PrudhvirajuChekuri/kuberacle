@@ -6,8 +6,8 @@ from pathlib import Path
 
 import yaml
 
-from k8s_rag.preprocessing.pipeline import run_pipeline, write_jsonl
-from k8s_rag.preprocessing.page_selection import resolve_pages
+from kuberacle.preprocessing.pipeline import run_pipeline, write_jsonl
+from kuberacle.preprocessing.page_selection import resolve_pages
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
