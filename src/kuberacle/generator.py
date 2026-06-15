@@ -5,6 +5,7 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
+from kuberacle.constants import ABSTENTION_SENTINEL
 from kuberacle.domain import RetrievedChunk
 from kuberacle.vertex import make_vertex_client
 
@@ -151,7 +152,7 @@ class VertexAIAnswerGenerator:
         text = response.text
         if not text:
             logger.warning("Generator returned empty response from model %r", self.model_id)
-            return "INSUFFICIENT_EVIDENCE."
+            return f"{ABSTENTION_SENTINEL}."
         return text.strip()
 
     def _stream_with_gemini(
