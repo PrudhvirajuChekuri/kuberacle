@@ -10,6 +10,7 @@ from typing import Any
 from kuberacle.constants import ABSTENTION_SENTINEL
 from kuberacle.domain import RetrievedChunk
 from kuberacle.generator import extract_citation_indices
+from kuberacle.interfaces import Generator, RelevanceGate, Retriever
 
 logger = logging.getLogger(__name__)
 
@@ -171,13 +172,13 @@ class RAGQASystem:
 
     def __init__(
         self,
-        retriever: Any,
-        generator: Any,
+        retriever: Retriever,
+        generator: Generator,
         min_evidence_score: float = 0.0,
         min_supporting_chunks: int = 1,
         strict_used_only: bool = True,
         deduplicate_citations: bool = True,
-        relevance_gate: Any = None,
+        relevance_gate: RelevanceGate | None = None,
     ) -> None:
         self.retriever = retriever
         self.generator = generator
