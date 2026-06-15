@@ -46,20 +46,20 @@ def test_build_qa_system_propagates_config(config):
     """Citation and evidence settings should flow from config into the system."""
     qa = build_qa_system(config, PROJECT_ROOT)
 
-    assert qa.min_evidence_score == config.min_evidence_score
-    assert qa.min_supporting_chunks == config.min_supporting_chunks
-    assert qa.strict_used_only == config.citation_strict_used_only
-    assert qa.deduplicate_citations == config.citation_deduplicate
-    assert qa.generator.model_id == config.generation_model_id
+    assert qa.min_evidence_score == config.retrieval.min_evidence_score
+    assert qa.min_supporting_chunks == config.retrieval.min_supporting_chunks
+    assert qa.strict_used_only == config.citation.strict_used_only
+    assert qa.deduplicate_citations == config.citation.deduplicate
+    assert qa.generator.model_id == config.generation.model_id
 
 
 def test_build_qa_system_wires_relevance_gate(config):
     """With gate enabled in config, the QA system should carry a wired gate."""
     qa = build_qa_system(config, PROJECT_ROOT)
 
-    assert config.gate_enabled is True
+    assert config.gate.enabled is True
     assert isinstance(qa.relevance_gate, VertexAIRelevanceGate)
-    assert qa.relevance_gate.model_id == config.gate_model_id
+    assert qa.relevance_gate.model_id == config.gate.model_id
     assert "{question}" in qa.relevance_gate.prompt_bundle["user"]
     assert qa.relevance_gate.prompt_bundle["system"]
 
@@ -69,4 +69,4 @@ def test_build_qa_system_resolves_persist_directory(config):
     qa = build_qa_system(config, PROJECT_ROOT)
     vector_store = qa.retriever.semantic_retriever.vector_store
 
-    assert vector_store.persist_directory == str(PROJECT_ROOT / config.persist_directory)
+    assert vector_store.persist_directory == str(PROJECT_ROOT / config.vector_store.persist_directory)

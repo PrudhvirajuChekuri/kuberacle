@@ -42,7 +42,7 @@ def main() -> None:
 
     args = parse_args()
     config = load_rag_config(CONFIG_PATH)
-    index_path = PROJECT_ROOT / config.persist_directory
+    index_path = PROJECT_ROOT / config.vector_store.persist_directory
 
     if not index_path.exists():
         raise SystemExit(f"Index directory not found: {index_path}")
@@ -55,9 +55,9 @@ def main() -> None:
 
     manifest = {
         "k8s_version": k8s_version,
-        "embedding_model_id": config.embedding_model_id,
-        "embedding_output_dimensionality": config.embedding_output_dimensionality,
-        "collection_name": config.collection_name,
+        "embedding_model_id": config.embedding.model_id,
+        "embedding_output_dimensionality": config.embedding.output_dimensionality,
+        "collection_name": config.vector_store.collection_name,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 

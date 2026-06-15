@@ -68,35 +68,35 @@ def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):
 
     assert config.gcp_project == "test-project"
     assert config.gcp_location == "us-central1"
-    assert config.embedding_model_id == "gemini-embedding-001"
-    assert config.generation_model_id == "gemini-2.5-flash-lite"
-    assert config.embedding_output_dimensionality == 768
-    assert config.collection_name == "k8s_docs_chunks_gemini"
-    assert config.semantic_top_k == 7
-    assert config.lexical_top_k == 6
-    assert config.final_top_k == 4
-    assert config.reranker_enabled is True
-    assert config.reranker_ranking_config == "default_ranking_config"
-    assert config.reranker_model == "semantic-ranker-default@latest"
-    assert config.prompt_version == "v1"
-    assert config.gate_enabled is True
-    assert config.gate_model_id == "gemini-2.5-flash"
-    assert config.max_tokens == 500
-    assert config.evaluation_dataset_path == "evals/golden/v2.jsonl"
-    assert config.eval_retrieval_recall_at_k_threshold == 0.90
-    assert config.eval_mrr_threshold == 0.75
-    assert config.eval_abstention_accuracy_threshold == 0.91
-    assert config.eval_non_empty_answer_rate_threshold == 0.95
-    assert config.eval_faithfulness_threshold == 0.88
-    assert config.eval_faithfulness_judge_model == "gemini-2.5-flash"
-    assert config.eval_faithfulness_min_parsed == 11
-    assert config.eval_context_precision_threshold == 0.83
-    assert config.eval_context_precision_judge_model == "gemini-2.5-flash"
-    assert config.eval_context_precision_min_parsed == 9
-    assert config.eval_answer_relevancy_threshold == 0.78
-    assert config.eval_answer_relevancy_judge_model == "gemini-2.5-flash"
-    assert config.eval_answer_relevancy_embedding_model == "gemini-embedding-001"
-    assert config.eval_answer_relevancy_min_parsed == 8
+    assert config.embedding.model_id == "gemini-embedding-001"
+    assert config.generation.model_id == "gemini-2.5-flash-lite"
+    assert config.embedding.output_dimensionality == 768
+    assert config.vector_store.collection_name == "k8s_docs_chunks_gemini"
+    assert config.retrieval.semantic_top_k == 7
+    assert config.retrieval.lexical_top_k == 6
+    assert config.retrieval.final_top_k == 4
+    assert config.reranker.enabled is True
+    assert config.reranker.ranking_config == "default_ranking_config"
+    assert config.reranker.model == "semantic-ranker-default@latest"
+    assert config.prompts.version == "v1"
+    assert config.gate.enabled is True
+    assert config.gate.model_id == "gemini-2.5-flash"
+    assert config.generation.max_tokens == 500
+    assert config.evaluation.dataset_path == "evals/golden/v2.jsonl"
+    assert config.evaluation.retrieval_recall_at_k_threshold == 0.90
+    assert config.evaluation.mrr_threshold == 0.75
+    assert config.evaluation.abstention_accuracy_threshold == 0.91
+    assert config.evaluation.non_empty_answer_rate_threshold == 0.95
+    assert config.evaluation.faithfulness_threshold == 0.88
+    assert config.evaluation.faithfulness_judge_model == "gemini-2.5-flash"
+    assert config.evaluation.faithfulness_min_parsed == 11
+    assert config.evaluation.context_precision_threshold == 0.83
+    assert config.evaluation.context_precision_judge_model == "gemini-2.5-flash"
+    assert config.evaluation.context_precision_min_parsed == 9
+    assert config.evaluation.answer_relevancy_threshold == 0.78
+    assert config.evaluation.answer_relevancy_judge_model == "gemini-2.5-flash"
+    assert config.evaluation.answer_relevancy_embedding_model == "gemini-embedding-001"
+    assert config.evaluation.answer_relevancy_min_parsed == 8
 
 
 def test_load_rag_config_gate_defaults(tmp_path, monkeypatch):
@@ -119,8 +119,8 @@ def test_load_rag_config_gate_defaults(tmp_path, monkeypatch):
 
     config = load_rag_config(config_path)
 
-    assert config.gate_enabled is False
-    assert config.gate_model_id == "gemini-2.5-flash-lite"
+    assert config.gate.enabled is False
+    assert config.gate.model_id == "gemini-2.5-flash-lite"
 
 
 def test_load_rag_config_raises_without_gcp_project(tmp_path, monkeypatch):

@@ -54,7 +54,7 @@ def main() -> None:
         print(f"- {citation.source_url} ({citation.chunk_id})")
     if args.verbose:
         print("\nRuntime:")
-        print(f"- prompt_version: {config.prompt_version}")
+        print(f"- prompt_version: {config.prompts.version}")
         print("- retrieval_mode: semantic+bm25+rerank")
 
 

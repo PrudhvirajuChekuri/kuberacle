@@ -98,7 +98,7 @@ def main() -> None:
     args = parse_args()
     config = load_rag_config(CONFIG_PATH)
 
-    dataset_path = resolve_path(args.dataset or config.evaluation_dataset_path)
+    dataset_path = resolve_path(args.dataset or config.evaluation.dataset_path)
     dataset = load_golden_dataset(dataset_path)
     if args.tags:
         selected_tags = {tag.strip() for tag in args.tags.split(",") if tag.strip()}
@@ -112,10 +112,10 @@ def main() -> None:
         raise SystemExit("No evaluation cases selected after applying filters.")
     qa_system = build_qa_system(config, PROJECT_ROOT)
     thresholds = EvaluationThresholds(
-        retrieval_recall_at_k=config.eval_retrieval_recall_at_k_threshold,
-        mrr=config.eval_mrr_threshold,
-        abstention_accuracy=config.eval_abstention_accuracy_threshold,
-        non_empty_answer_rate=config.eval_non_empty_answer_rate_threshold,
+        retrieval_recall_at_k=config.evaluation.retrieval_recall_at_k_threshold,
+        mrr=config.evaluation.mrr_threshold,
+        abstention_accuracy=config.evaluation.abstention_accuracy_threshold,
+        non_empty_answer_rate=config.evaluation.non_empty_answer_rate_threshold,
     )
     summary = evaluate_dataset(
         qa_system=qa_system,
@@ -134,61 +134,61 @@ def main() -> None:
             case_results=summary.case_results,
             gcp_project=config.gcp_project,
             gcp_location=config.gcp_location,
-            judge_model=config.eval_faithfulness_judge_model,
+            judge_model=config.evaluation.faithfulness_judge_model,
         )
         faithfulness_passed = (
-            faithfulness_result.parsed_count >= config.eval_faithfulness_min_parsed
-            and faithfulness_result.mean >= config.eval_faithfulness_threshold
+            faithfulness_result.parsed_count >= config.evaluation.faithfulness_min_parsed
+            and faithfulness_result.mean >= config.evaluation.faithfulness_threshold
         )
         if not faithfulness_passed:
             logger.warning(
                 "Faithfulness gate FAILED: mean=%.3f (threshold=%.3f), parsed=%d/%d (min=%d)",
                 faithfulness_result.mean,
-                config.eval_faithfulness_threshold,
+                config.evaluation.faithfulness_threshold,
                 faithfulness_result.parsed_count,
                 faithfulness_result.total_count,
-                config.eval_faithfulness_min_parsed,
+                config.evaluation.faithfulness_min_parsed,
             )
 
         context_precision_result = compute_context_precision(
             case_results=summary.case_results,
             gcp_project=config.gcp_project,
             gcp_location=config.gcp_location,
-            judge_model=config.eval_context_precision_judge_model,
+            judge_model=config.evaluation.context_precision_judge_model,
         )
         context_precision_passed = (
-            context_precision_result.parsed_count >= config.eval_context_precision_min_parsed
-            and context_precision_result.mean >= config.eval_context_precision_threshold
+            context_precision_result.parsed_count >= config.evaluation.context_precision_min_parsed
+            and context_precision_result.mean >= config.evaluation.context_precision_threshold
         )
         if not context_precision_passed:
             logger.warning(
                 "Context precision gate FAILED: mean=%.3f (threshold=%.3f), parsed=%d/%d (min=%d)",
                 context_precision_result.mean,
-                config.eval_context_precision_threshold,
+                config.evaluation.context_precision_threshold,
                 context_precision_result.parsed_count,
                 context_precision_result.total_count,
-                config.eval_context_precision_min_parsed,
+                config.evaluation.context_precision_min_parsed,
             )
 
         answer_relevancy_result = compute_answer_relevancy(
             case_results=summary.case_results,
             gcp_project=config.gcp_project,
             gcp_location=config.gcp_location,
-            judge_model=config.eval_answer_relevancy_judge_model,
-            embedding_model=config.eval_answer_relevancy_embedding_model,
+            judge_model=config.evaluation.answer_relevancy_judge_model,
+            embedding_model=config.evaluation.answer_relevancy_embedding_model,
         )
         answer_relevancy_passed = (
-            answer_relevancy_result.parsed_count >= config.eval_answer_relevancy_min_parsed
-            and answer_relevancy_result.mean >= config.eval_answer_relevancy_threshold
+            answer_relevancy_result.parsed_count >= config.evaluation.answer_relevancy_min_parsed
+            and answer_relevancy_result.mean >= config.evaluation.answer_relevancy_threshold
         )
         if not answer_relevancy_passed:
             logger.warning(
                 "Answer relevancy gate FAILED: mean=%.3f (threshold=%.3f), parsed=%d/%d (min=%d)",
                 answer_relevancy_result.mean,
-                config.eval_answer_relevancy_threshold,
+                config.evaluation.answer_relevancy_threshold,
                 answer_relevancy_result.parsed_count,
                 answer_relevancy_result.total_count,
-                config.eval_answer_relevancy_min_parsed,
+                config.evaluation.answer_relevancy_min_parsed,
             )
 
         ragas_passed = faithfulness_passed and context_precision_passed and answer_relevancy_passed

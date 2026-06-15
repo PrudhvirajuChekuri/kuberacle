@@ -46,18 +46,18 @@ def main() -> None:
     args = parse_args()
     logger.info("Loading config from %s", CONFIG_PATH)
     config = load_rag_config(CONFIG_PATH)
-    logger.info("Embedding model: %s", config.embedding_model_id)
-    logger.info("Collection: %s", config.collection_name)
+    logger.info("Embedding model: %s", config.embedding.model_id)
+    logger.info("Collection: %s", config.vector_store.collection_name)
 
     embedder = VertexAIEmbedder(
-        model_id=config.embedding_model_id,
+        model_id=config.embedding.model_id,
         gcp_project=config.gcp_project,
         gcp_location=config.gcp_location,
-        output_dimensionality=config.embedding_output_dimensionality,
+        output_dimensionality=config.embedding.output_dimensionality,
     )
     vector_store = ChromaVectorStore(
-        collection_name=config.collection_name,
-        persist_directory=str(PROJECT_ROOT / config.persist_directory),
+        collection_name=config.vector_store.collection_name,
+        persist_directory=str(PROJECT_ROOT / config.vector_store.persist_directory),
     )
     vector_store.reset_collection()
 
