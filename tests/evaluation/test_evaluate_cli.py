@@ -6,7 +6,9 @@ from pathlib import Path
 
 def _load_evaluate_module():
     """Load scripts/evaluate.py as a module for unit tests."""
-    script_path = Path(__file__).resolve().parent.parent / "scripts" / "evaluate.py"
+    script_path = (
+        Path(__file__).resolve().parent.parent.parent / "scripts" / "evaluate.py"
+    )
     spec = importlib.util.spec_from_file_location("evaluate_script", script_path)
     module = importlib.util.module_from_spec(spec)
     assert spec is not None and spec.loader is not None
