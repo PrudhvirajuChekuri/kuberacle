@@ -80,6 +80,7 @@ export function useRagChat() {
               pending: false,
               citations: data.citations,
               insufficientEvidence: data.insufficient_evidence,
+              abstained: data.abstained,
             });
           } else if (frame.event === "error") {
             const data = JSON.parse(frame.data) as { message: string };

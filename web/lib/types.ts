@@ -22,6 +22,8 @@ export interface ChatMessage {
   citations?: Citation[];
   /** True when the answer could not be grounded in any verified source. */
   insufficientEvidence?: boolean;
+  /** True when the answer is an explicit abstention (model/pipeline declined). */
+  abstained?: boolean;
   /** True when the request failed before/while streaming. */
   error?: boolean;
   /** True while the assistant answer is still streaming. */
@@ -32,4 +34,5 @@ export interface ChatMessage {
 export interface FinalEventData {
   citations: Citation[];
   insufficient_evidence: boolean;
+  abstained: boolean;
 }

@@ -1,11 +1,11 @@
 """Deterministic evaluation metrics for RAG quality gates."""
 
-from kuberacle.constants import ABSTENTION_SENTINEL
+from kuberacle.constants import is_abstention
 
 
 def is_insufficient_evidence(answer: str) -> bool:
     """Return whether answer indicates explicit abstention."""
-    return answer.strip().startswith(ABSTENTION_SENTINEL)
+    return is_abstention(answer)
 
 
 def retrieval_recall_at_k(
