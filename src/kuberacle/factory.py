@@ -2,14 +2,14 @@
 
 from pathlib import Path
 
-from kuberacle.ingestion.config import RAGConfig
+from kuberacle.config import RAGConfig
 from kuberacle.ingestion.embedder import VertexAIEmbedder
 from kuberacle.ingestion.vector_store import ChromaVectorStore
 from kuberacle.retrieval.bm25 import BM25Retriever
-from kuberacle.retrieval.gate import VertexAIRelevanceGate
-from kuberacle.retrieval.generator import VertexAIAnswerGenerator
-from kuberacle.retrieval.prompts import load_gate_prompt, load_prompt_bundle
-from kuberacle.retrieval.qa import RAGQASystem
+from kuberacle.gate import VertexAIRelevanceGate
+from kuberacle.generator import VertexAIAnswerGenerator
+from kuberacle.prompts import load_gate_prompt, load_prompt_bundle
+from kuberacle.qa import RAGQASystem
 from kuberacle.retrieval.reranker import DiscoveryEngineReranker
 from kuberacle.retrieval.retriever import HybridRetriever, SemanticRetriever
 

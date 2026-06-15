@@ -27,9 +27,9 @@ from kuberacle.api.counters import FirestoreCounters
 from kuberacle.api.guardrails import GuardrailError, Guardrails
 from kuberacle.api.schemas import CitationModel, QueryRequest
 from kuberacle.api.settings import load_guardrail_settings
-from kuberacle.ingestion.config import load_rag_config
-from kuberacle.retrieval.factory import build_qa_system
-from kuberacle.retrieval.qa import AnswerDelta
+from kuberacle.config import load_rag_config
+from kuberacle.factory import build_qa_system
+from kuberacle.qa import AnswerDelta
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@
 import logging
 import re
 
-from kuberacle.ingestion.schemas import RetrievedChunk
+from kuberacle.domain import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 

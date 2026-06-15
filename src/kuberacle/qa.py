@@ -7,8 +7,8 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from kuberacle.ingestion.schemas import RetrievedChunk
-from kuberacle.retrieval.generator import extract_citation_indices
+from kuberacle.domain import RetrievedChunk
+from kuberacle.generator import extract_citation_indices
 
 logger = logging.getLogger(__name__)
 

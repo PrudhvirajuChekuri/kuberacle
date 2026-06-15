@@ -25,8 +25,8 @@ from kuberacle.evaluation.report import (
     write_markdown_summary,
 )
 from kuberacle.evaluation.runner import EvaluationThresholds, evaluate_dataset
-from kuberacle.ingestion.config import load_rag_config
-from kuberacle.retrieval.factory import build_qa_system
+from kuberacle.config import load_rag_config
+from kuberacle.factory import build_qa_system
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

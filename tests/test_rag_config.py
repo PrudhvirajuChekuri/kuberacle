@@ -2,7 +2,7 @@
 
 import pytest
 
-from kuberacle.ingestion.config import load_rag_config
+from kuberacle.config import load_rag_config
 
 
 def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):

@@ -2,8 +2,8 @@
 
 from kuberacle.evaluation.dataset import GoldenExample
 from kuberacle.evaluation.runner import EvaluationThresholds, evaluate_dataset
-from kuberacle.ingestion.schemas import RetrievedChunk
-from kuberacle.retrieval.qa import Citation, QAResult
+from kuberacle.domain import RetrievedChunk
+from kuberacle.qa import Citation, QAResult
 
 
 class StubQASystem:

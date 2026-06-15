@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from kuberacle.ingestion.config import load_rag_config
+from kuberacle.config import load_rag_config
 from kuberacle.ingestion.embedder import VertexAIEmbedder
 from kuberacle.ingestion.vector_store import ChromaVectorStore
-from kuberacle.retrieval.factory import build_qa_system
-from kuberacle.retrieval.gate import VertexAIRelevanceGate
-from kuberacle.retrieval.generator import VertexAIAnswerGenerator
-from kuberacle.retrieval.qa import RAGQASystem
+from kuberacle.factory import build_qa_system
+from kuberacle.gate import VertexAIRelevanceGate
+from kuberacle.generator import VertexAIAnswerGenerator
+from kuberacle.qa import RAGQASystem
 from kuberacle.retrieval.retriever import HybridRetriever
 
 

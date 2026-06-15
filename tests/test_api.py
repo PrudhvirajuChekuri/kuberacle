@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from kuberacle.api.app import create_app
 from kuberacle.api.guardrails import GuardrailError
-from kuberacle.retrieval.qa import AnswerDelta, Citation, QAResult
+from kuberacle.qa import AnswerDelta, Citation, QAResult
 
 
 class FakeQA:

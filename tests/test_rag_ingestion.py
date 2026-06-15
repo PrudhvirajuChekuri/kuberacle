@@ -3,7 +3,7 @@
 import json
 
 from kuberacle.ingestion.pipeline import IngestionPipeline
-from kuberacle.ingestion.schemas import ChunkRecord
+from kuberacle.domain import ChunkRecord
 from kuberacle.ingestion.vector_store import ChromaVectorStore
 
 

@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from kuberacle.ingestion.config import load_rag_config
+from kuberacle.config import load_rag_config
 from kuberacle.ingestion.embedder import VertexAIEmbedder
 from kuberacle.ingestion.pipeline import IngestionPipeline
 from kuberacle.ingestion.vector_store import ChromaVectorStore

@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from kuberacle.ingestion.schemas import RetrievedChunk
+from kuberacle.domain import RetrievedChunk
 from kuberacle.retrieval.constants import DISCOVERY_ENGINE_RANK_URL
 
 logger = logging.getLogger(__name__)
