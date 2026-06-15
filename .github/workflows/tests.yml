@@ -23,3 +23,39 @@ jobs:
 
       - name: Run tests
         run: pytest -q
+
+  audit-python:
+    runs-on: ubuntu-latest
+    # Advisory only: report known vulnerabilities without blocking unrelated work.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Audit pinned dependencies
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip-audit -r requirements.lock
+
+  audit-web:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high

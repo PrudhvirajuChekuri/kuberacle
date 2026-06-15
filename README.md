@@ -58,6 +58,20 @@ Configuration lives in `configs/rag.yaml`; versioned prompts live under `configs
 pip install -e ".[dev]"
 ```
 
+`pyproject.toml` is the source of truth for dependencies (with tested-against
+version floors). For a byte-for-byte reproducible environment, install the
+pinned lock instead:
+
+```bash
+pip install -r requirements.lock
+```
+
+Regenerate the lock after changing dependencies, in a clean Python 3.12 venv:
+
+```bash
+pip install -e ".[dev]" && pip freeze --exclude-editable > requirements.lock
+```
+
 ### Configure credentials
 
 ```bash
