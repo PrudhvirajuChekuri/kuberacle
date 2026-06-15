@@ -1,9 +1,8 @@
 """Command-line entry points for kuberacle.
 
-Each command module exposes a ``main()``. They are exposed three ways:
+Each command module exposes a ``main()``. They are exposed two ways:
 - console scripts (``kuberacle-ingest`` ...), declared in pyproject.toml,
-- the unified dispatcher ``python -m kuberacle <command>``,
-- and the thin ``scripts/*.py`` shims (kept for existing docs and CI).
+- the unified dispatcher ``python -m kuberacle <command>``.
 
 ``COMMANDS`` maps the dispatcher's command names to their module paths; modules
 are imported lazily so a single command never pulls in unrelated heavy deps.

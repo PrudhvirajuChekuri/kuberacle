@@ -87,43 +87,42 @@ GCP_LOCATION=us-central1
 
 ## Run RAG Pipeline
 
-After `pip install`, every step below is also available as a console command
-(`kuberacle-<name>`) or via the unified dispatcher (`python -m kuberacle <name>`),
-runnable from the project root. For example `python scripts/ingest.py`,
-`kuberacle-ingest`, and `python -m kuberacle ingest` are equivalent. Run
-`python -m kuberacle` to list commands.
+The steps below use the unified dispatcher `python -m kuberacle <name>`, run from
+the project root. After `pip install`, each is also a console command
+(`kuberacle-<name>`); the two are equivalent (e.g. `python -m kuberacle ingest`
+is the same as `kuberacle-ingest`). Run `python -m kuberacle` to list commands.
 
 1. Ensure preprocessing output exists:
    ```bash
-   python scripts/download_data.py
-   python scripts/preprocess.py
+   python -m kuberacle download-data
+   python -m kuberacle preprocess
    ```
 
 2. Ingest chunks into ChromaDB:
    ```bash
-   python scripts/ingest.py
+   python -m kuberacle ingest
    ```
 
 3. Ask a question:
    ```bash
-   python scripts/query.py "What is a Pod?"
+   python -m kuberacle query "What is a Pod?"
    ```
 
 4. Run offline evaluation:
    ```bash
    # Smoke eval, deterministic gates only (same as CI)
-   python scripts/evaluate.py --dataset evals/golden/smoke.jsonl --mode deterministic
+   python -m kuberacle evaluate --dataset evals/golden/smoke.jsonl --mode deterministic
 
    # Fast local run, deterministic gates only, skips RAGAS (~20s)
-   python scripts/evaluate.py --dataset evals/golden/v2.jsonl --mode deterministic
+   python -m kuberacle evaluate --dataset evals/golden/v2.jsonl --mode deterministic
 
    # Full benchmark with RAGAS gates
-   python scripts/evaluate.py --dataset evals/golden/v2.jsonl
+   python -m kuberacle evaluate --dataset evals/golden/v2.jsonl
    ```
 
-The query script prints the grounded answer and a citation list with `source_url` and `chunk_id`.
+The query command prints the grounded answer and a citation list with `source_url` and `chunk_id`.
 
-The evaluation script writes JSON and markdown artifacts under `artifacts/evals/` and returns a non-zero exit code if any quality gate fails.
+The evaluate command writes JSON and markdown artifacts under `artifacts/evals/` and returns a non-zero exit code if any quality gate fails.
 
 ## Run the API
 
@@ -131,7 +130,7 @@ A FastAPI service streams grounded answers over Server-Sent Events. The pipeline
 
 ```bash
 pip install -e ".[api]"
-python scripts/serve.py            # http://127.0.0.1:8000  (add --reload for dev)
+python -m kuberacle serve            # http://127.0.0.1:8000  (add --reload for dev)
 ```
 
 Query it (stream tokens then a final citations event):
@@ -158,7 +157,7 @@ Kuberacle, a Next.js chat interface (`web/`), streams answers token-by-token fro
 
 ```bash
 # Terminal 1 - backend
-python scripts/serve.py
+python -m kuberacle serve
 
 # Terminal 2 - frontend
 cd web

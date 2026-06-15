@@ -1,7 +1,7 @@
 """Query the semantic RAG pipeline.
 
 Usage:
-    python scripts/query.py "What is a Pod?"
+    python -m kuberacle query "What is a Pod?"
 """
 
 import argparse

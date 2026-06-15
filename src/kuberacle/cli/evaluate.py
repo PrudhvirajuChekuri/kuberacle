@@ -1,7 +1,7 @@
 """Run offline evaluation for the RAG pipeline.
 
 Usage:
-    python scripts/evaluate.py
+    python -m kuberacle evaluate
 """
 
 import argparse

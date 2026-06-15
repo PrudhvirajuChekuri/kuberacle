@@ -1,7 +1,7 @@
 """Run ingestion into ChromaDB with Vertex AI embeddings.
 
 Usage:
-    python scripts/ingest.py [--input PATH]
+    python -m kuberacle ingest [--input PATH]
 """
 
 import argparse
