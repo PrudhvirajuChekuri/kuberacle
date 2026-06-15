@@ -87,6 +87,12 @@ GCP_LOCATION=us-central1
 
 ## Run RAG Pipeline
 
+After `pip install`, every step below is also available as a console command
+(`kuberacle-<name>`) or via the unified dispatcher (`python -m kuberacle <name>`),
+runnable from the project root. For example `python scripts/ingest.py`,
+`kuberacle-ingest`, and `python -m kuberacle ingest` are equivalent. Run
+`python -m kuberacle` to list commands.
+
 1. Ensure preprocessing output exists:
    ```bash
    python scripts/download_data.py

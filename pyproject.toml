@@ -39,6 +39,16 @@ dev = [
     "kuberacle[eval]",
 ]
 
+[project.scripts]
+kuberacle-download-data = "kuberacle.cli.download_data:main"
+kuberacle-preprocess = "kuberacle.cli.preprocess:main"
+kuberacle-ingest = "kuberacle.cli.ingest:main"
+kuberacle-query = "kuberacle.cli.query:main"
+kuberacle-evaluate = "kuberacle.cli.evaluate:main"
+kuberacle-serve = "kuberacle.cli.serve:main"
+kuberacle-push-index = "kuberacle.cli.push_index:main"
+kuberacle-pull-index = "kuberacle.cli.pull_index:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
