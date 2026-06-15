@@ -38,12 +38,12 @@ jobs:
 
       - name: Pull vector index from GCS
         run: |
-          python scripts/pull_index.py \
+          python -m kuberacle pull-index \
             --bucket ${{ secrets.GCS_INDEX_BUCKET }}
 
       - name: Run smoke evaluation gate
         run: |
-          python scripts/evaluate.py \
+          python -m kuberacle evaluate \
             --dataset evals/golden/smoke.jsonl \
             --mode deterministic \
             --json-out artifacts/evals/ci-smoke-eval.json \
@@ -87,22 +87,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python scripts/download_data.py --config configs/datasets/full.yaml
-          python scripts/preprocess.py --config configs/datasets/full.yaml
+          python -m kuberacle download-data --config configs/datasets/full.yaml
+          python -m kuberacle preprocess --config configs/datasets/full.yaml
 
       - name: Build vector index
-        run: python scripts/ingest.py
+        run: python -m kuberacle ingest
 
       - name: Run full evaluation gate
         run: |
-          python scripts/evaluate.py \
+          python -m kuberacle evaluate \
             --json-out artifacts/evals/ci-full-eval.json \
             --md-out artifacts/evals/ci-full-eval.md
 
       - name: Push vector index to GCS
         if: success()
         run: |
-          python scripts/push_index.py \
+          python -m kuberacle push-index \
             --bucket ${{ secrets.GCS_INDEX_BUCKET }}
 
       - name: Upload full evaluation artifacts

@@ -1,22 +1,23 @@
 """Query the semantic RAG pipeline.
 
 Usage:
-    python scripts/query.py "What is a Pod?"
+    python -m kuberacle query "What is a Pod?"
 """
 
 import argparse
 import logging
 from pathlib import Path
+from kuberacle.cli._root import project_root
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(project_root() / ".env")
 
-from kuberacle.ingestion.config import load_rag_config
-from kuberacle.retrieval.factory import build_qa_system
+from kuberacle.config import load_rag_config
+from kuberacle.factory import build_qa_system
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = project_root()
 CONFIG_PATH = PROJECT_ROOT / "configs" / "rag.yaml"
 
 
@@ -54,7 +55,7 @@ def main() -> None:
         print(f"- {citation.source_url} ({citation.chunk_id})")
     if args.verbose:
         print("\nRuntime:")
-        print(f"- prompt_version: {config.prompt_version}")
+        print(f"- prompt_version: {config.prompts.version}")
         print("- retrieval_mode: semantic+bm25+rerank")
 
 

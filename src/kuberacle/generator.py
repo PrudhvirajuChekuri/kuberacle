@@ -5,7 +5,9 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
-from kuberacle.ingestion.schemas import RetrievedChunk
+from kuberacle.constants import ABSTENTION_SENTINEL
+from kuberacle.domain import RetrievedChunk
+from kuberacle.vertex import make_vertex_client
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +63,7 @@ class VertexAIAnswerGenerator:
     def client(self) -> Any:
         """Lazily initialize and return the Gen AI client."""
         if self._client is None:
-            from google import genai
-
-            self._client = genai.Client(
-                vertexai=True,
-                project=self.gcp_project,
-                location=self.gcp_location,
-            )
+            self._client = make_vertex_client(self.gcp_project, self.gcp_location)
         return self._client
 
     def _build_prompts(
@@ -156,7 +152,7 @@ class VertexAIAnswerGenerator:
         text = response.text
         if not text:
             logger.warning("Generator returned empty response from model %r", self.model_id)
-            return "INSUFFICIENT_EVIDENCE."
+            return f"{ABSTENTION_SENTINEL}."
         return text.strip()
 
     def _stream_with_gemini(

@@ -8,15 +8,16 @@ import shutil
 import tarfile
 import tempfile
 from pathlib import Path
+from kuberacle.cli._root import project_root
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(project_root() / ".env")
 
-from kuberacle.ingestion.config import load_rag_config
+from kuberacle.config import load_rag_config
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = project_root()
 CONFIG_PATH = PROJECT_ROOT / "configs" / "rag.yaml"
 MANIFEST_OBJECT = "index/manifest.json"
 
@@ -39,20 +40,20 @@ def _validate_manifest(manifest: dict, config) -> None:
     errors = []
     warnings = []
 
-    if manifest.get("embedding_model_id") != config.embedding_model_id:
+    if manifest.get("embedding_model_id") != config.embedding.model_id:
         errors.append(
             f"embedding_model_id: index={manifest.get('embedding_model_id')!r}, "
-            f"config={config.embedding_model_id!r}"
+            f"config={config.embedding.model_id!r}"
         )
-    if manifest.get("collection_name") != config.collection_name:
+    if manifest.get("collection_name") != config.vector_store.collection_name:
         errors.append(
             f"collection_name: index={manifest.get('collection_name')!r}, "
-            f"config={config.collection_name!r}"
+            f"config={config.vector_store.collection_name!r}"
         )
-    if manifest.get("embedding_output_dimensionality") != config.embedding_output_dimensionality:
+    if manifest.get("embedding_output_dimensionality") != config.embedding.output_dimensionality:
         errors.append(
             f"embedding_output_dimensionality: index={manifest.get('embedding_output_dimensionality')}, "
-            f"config={config.embedding_output_dimensionality}"
+            f"config={config.embedding.output_dimensionality}"
         )
 
     k8s_version = manifest.get("k8s_version", "unknown")
@@ -78,7 +79,7 @@ def main() -> None:
 
     args = parse_args()
     config = load_rag_config(CONFIG_PATH)
-    index_path = PROJECT_ROOT / config.persist_directory
+    index_path = PROJECT_ROOT / config.vector_store.persist_directory
 
     from google.cloud import storage
 

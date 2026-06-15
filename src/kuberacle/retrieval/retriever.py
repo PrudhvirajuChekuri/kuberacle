@@ -1,9 +1,9 @@
 """Semantic + hybrid retrieval orchestration."""
 
 import logging
-from typing import Any
 
-from kuberacle.ingestion.schemas import RetrievedChunk
+from kuberacle.domain import RetrievedChunk
+from kuberacle.interfaces import Embedder, VectorStore
 from kuberacle.retrieval.bm25 import BM25Retriever
 from kuberacle.retrieval.hybrid import merge_hybrid_candidates
 from kuberacle.retrieval.reranker import DiscoveryEngineReranker
@@ -20,7 +20,9 @@ class SemanticRetriever:
         top_k: Default retrieval depth.
     """
 
-    def __init__(self, embedder: Any, vector_store: Any, top_k: int = 5) -> None:
+    def __init__(
+        self, embedder: Embedder, vector_store: VectorStore, top_k: int = 5
+    ) -> None:
         self.embedder = embedder
         self.vector_store = vector_store
         self.top_k = top_k

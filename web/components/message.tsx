@@ -10,6 +10,7 @@ import { CitationPreview } from "@/components/citation-preview";
 import { CodeBlock } from "@/components/code-block";
 import { CopyButton } from "@/components/copy-button";
 import { Cube } from "@/components/cube-icon";
+import { ABSTENTION_SENTINEL } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, Citation } from "@/lib/types";
 
@@ -137,7 +138,10 @@ export function Message({ message }: { message: ChatMessage }) {
   }
 
   const showTyping = message.pending && message.content === "";
-  const isAbstention = message.content.trim().startsWith("INSUFFICIENT_EVIDENCE");
+  // The `final` event's `abstained` flag is authoritative; fall back to the
+  // sentinel only to bridge the streaming window before that flag arrives.
+  const isAbstention =
+    message.abstained ?? message.content.trim().startsWith(ABSTENTION_SENTINEL);
 
   const selectCite = (n: number) => {
     setActiveCite(n);

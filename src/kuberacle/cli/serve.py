@@ -1,7 +1,7 @@
 """Run the RAG API server locally.
 
 Usage:
-    python scripts/serve.py [--host 0.0.0.0] [--port 8000] [--reload]
+    python -m kuberacle serve [--host 0.0.0.0] [--port 8000] [--reload]
 """
 
 import argparse

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from kuberacle.api.app import create_app
 from kuberacle.api.guardrails import GuardrailError
-from kuberacle.retrieval.qa import AnswerDelta, Citation, QAResult
+from kuberacle.qa import AnswerDelta, Citation, QAResult
 
 
 class FakeQA:
@@ -78,13 +78,14 @@ def test_query_streams_tokens_then_final():
     assert '"text": "Pods "' in body
     assert "event: final" in body
     assert '"insufficient_evidence": false' in body
+    assert '"abstained": false' in body
     assert '"chunk_id": "a"' in body
     assert '"title": "Pods"' in body
     assert "A Pod is the smallest deployable unit." in body
 
 
 def test_query_final_flags_insufficient_when_no_citations():
-    """A final event without citations should be flagged ungrounded."""
+    """A final event without citations should be flagged ungrounded, not abstained."""
     events = [
         AnswerDelta("Ungrounded text."),
         QAResult(answer="Ungrounded text.", citations=[], retrieved_chunks=[]),
@@ -93,6 +94,23 @@ def test_query_final_flags_insufficient_when_no_citations():
 
     assert resp.status_code == 200
     assert '"insufficient_evidence": true' in resp.text
+    assert '"abstained": false' in resp.text
+
+
+def test_query_final_flags_abstained_on_sentinel_answer():
+    """An answer that is the abstention sentinel should set abstained true."""
+    events = [
+        AnswerDelta("INSUFFICIENT_EVIDENCE. Out of scope."),
+        QAResult(
+            answer="INSUFFICIENT_EVIDENCE. Out of scope.",
+            citations=[],
+            retrieved_chunks=[],
+        ),
+    ]
+    resp = _client_with(events).post("/query", json={"question": "q"})
+
+    assert resp.status_code == 200
+    assert '"abstained": true' in resp.text
 
 
 def test_query_rejects_empty_question():

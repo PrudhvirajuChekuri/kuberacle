@@ -3,6 +3,7 @@
 import argparse
 import logging
 from pathlib import Path
+from kuberacle.cli._root import project_root
 
 import yaml
 
@@ -10,7 +11,7 @@ from kuberacle.preprocessing.pipeline import run_pipeline, write_jsonl
 from kuberacle.preprocessing.page_selection import resolve_pages
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = project_root()
 CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "full.yaml"
 DATA_DIR = PROJECT_ROOT / "data"
 OUTPUT_PATH = DATA_DIR / "processed" / "chunks.jsonl"

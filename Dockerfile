@@ -15,10 +15,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /build
 
-# Install the package with the API extra (fastapi + uvicorn).
-COPY pyproject.toml ./
+# Install the package with the API extra (fastapi + uvicorn), pinned to the
+# lockfile via constraints so the image is reproducible. Constraints only pin
+# versions of what [api] actually pulls in; the dev/eval lines in the lock are
+# ignored, so the image stays slim.
+COPY pyproject.toml requirements.lock ./
 COPY src ./src
-RUN pip install --no-cache-dir ".[api]"
+RUN pip install --no-cache-dir -c requirements.lock ".[api]"
 
 FROM python:3.12-slim AS runtime
 

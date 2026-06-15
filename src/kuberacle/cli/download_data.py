@@ -6,6 +6,7 @@ import re
 import time
 import tomllib
 from pathlib import Path
+from kuberacle.cli._root import project_root
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -16,7 +17,7 @@ from kuberacle.preprocessing.page_selection import resolve_pages, _owner_repo_fr
 
 
 # Repository root (assumes script is run from project root)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = project_root()
 
 logger = logging.getLogger(__name__)
 CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "full.yaml"

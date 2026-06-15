@@ -7,21 +7,23 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from kuberacle.ingestion.schemas import RetrievedChunk
-from kuberacle.retrieval.generator import extract_citation_indices
+from kuberacle.constants import ABSTENTION_SENTINEL
+from kuberacle.domain import RetrievedChunk
+from kuberacle.generator import extract_citation_indices
+from kuberacle.interfaces import Generator, RelevanceGate, Retriever
 
 logger = logging.getLogger(__name__)
 
 _NO_RETRIEVAL_ANSWER = (
-    "INSUFFICIENT_EVIDENCE. I could not retrieve supporting "
+    f"{ABSTENTION_SENTINEL}. I could not retrieve supporting "
     "documentation for this question."
 )
 _UNVERIFIED_ANSWER = (
-    "INSUFFICIENT_EVIDENCE. I could not verify enough supported "
+    f"{ABSTENTION_SENTINEL}. I could not verify enough supported "
     "citations for this question."
 )
 _OUT_OF_SCOPE_ANSWER = (
-    "INSUFFICIENT_EVIDENCE. This question is outside the scope of the "
+    f"{ABSTENTION_SENTINEL}. This question is outside the scope of the "
     "Kubernetes documentation, so I cannot answer it from my sources."
 )
 
@@ -170,13 +172,13 @@ class RAGQASystem:
 
     def __init__(
         self,
-        retriever: Any,
-        generator: Any,
+        retriever: Retriever,
+        generator: Generator,
         min_evidence_score: float = 0.0,
         min_supporting_chunks: int = 1,
         strict_used_only: bool = True,
         deduplicate_citations: bool = True,
-        relevance_gate: Any = None,
+        relevance_gate: RelevanceGate | None = None,
     ) -> None:
         self.retriever = retriever
         self.generator = generator

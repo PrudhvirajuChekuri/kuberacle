@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from kuberacle.ingestion.schemas import ChunkRecord, RetrievedChunk
+from kuberacle.domain import ChunkRecord, RetrievedChunk
 
 logger = logging.getLogger(__name__)
 

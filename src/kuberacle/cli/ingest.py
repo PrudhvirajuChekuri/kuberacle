@@ -1,24 +1,25 @@
 """Run ingestion into ChromaDB with Vertex AI embeddings.
 
 Usage:
-    python scripts/ingest.py [--input PATH]
+    python -m kuberacle ingest [--input PATH]
 """
 
 import argparse
 import logging
 from pathlib import Path
+from kuberacle.cli._root import project_root
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(project_root() / ".env")
 
-from kuberacle.ingestion.config import load_rag_config
+from kuberacle.config import load_rag_config
 from kuberacle.ingestion.embedder import VertexAIEmbedder
 from kuberacle.ingestion.pipeline import IngestionPipeline
 from kuberacle.ingestion.vector_store import ChromaVectorStore
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = project_root()
 CONFIG_PATH = PROJECT_ROOT / "configs" / "rag.yaml"
 DEFAULT_INPUT_JSONL = PROJECT_ROOT / "data" / "processed" / "chunks.jsonl"
 
@@ -46,18 +47,18 @@ def main() -> None:
     args = parse_args()
     logger.info("Loading config from %s", CONFIG_PATH)
     config = load_rag_config(CONFIG_PATH)
-    logger.info("Embedding model: %s", config.embedding_model_id)
-    logger.info("Collection: %s", config.collection_name)
+    logger.info("Embedding model: %s", config.embedding.model_id)
+    logger.info("Collection: %s", config.vector_store.collection_name)
 
     embedder = VertexAIEmbedder(
-        model_id=config.embedding_model_id,
+        model_id=config.embedding.model_id,
         gcp_project=config.gcp_project,
         gcp_location=config.gcp_location,
-        output_dimensionality=config.embedding_output_dimensionality,
+        output_dimensionality=config.embedding.output_dimensionality,
     )
     vector_store = ChromaVectorStore(
-        collection_name=config.collection_name,
-        persist_directory=str(PROJECT_ROOT / config.persist_directory),
+        collection_name=config.vector_store.collection_name,
+        persist_directory=str(PROJECT_ROOT / config.vector_store.persist_directory),
     )
     vector_store.reset_collection()
 

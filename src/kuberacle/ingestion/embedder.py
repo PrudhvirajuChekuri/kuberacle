@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from kuberacle.vertex import make_vertex_client
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,13 +40,7 @@ class VertexAIEmbedder:
     def client(self) -> Any:
         """Lazily initialize and return the Gen AI client."""
         if self._client is None:
-            from google import genai
-
-            self._client = genai.Client(
-                vertexai=True,
-                project=self.gcp_project,
-                location=self.gcp_location,
-            )
+            self._client = make_vertex_client(self.gcp_project, self.gcp_location)
         return self._client
 
     def _embed(self, contents: str | list[str], task_type: str) -> list[list[float]]:
