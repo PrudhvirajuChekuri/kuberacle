@@ -26,8 +26,6 @@ jobs:
 
   audit-python:
     runs-on: ubuntu-latest
-    # Advisory only: report known vulnerabilities without blocking unrelated work.
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,11 +38,32 @@ jobs:
       - name: Audit pinned dependencies
         run: |
           python -m pip install --upgrade pip pip-audit
-          pip-audit -r requirements.lock
+
+          # Security triage: 2026-06-15
+          # These advisories currently have no patched versions available upstream.
+          #
+          # CVE-2026-45829 / chromadb:
+          #   Not reachable in this deployment. The advisory targets the ChromaDB
+          #   Python FastAPI server collection-creation path. We use Chroma as an
+          #   embedded local persistent client and do not run or expose the Chroma
+          #   HTTP server.
+          #
+          # CVE-2026-6587 / ragas:
+          #   Not reachable in production. RAGAS is eval-only, not included in the
+          #   deployed API image, and runs offline against trusted golden datasets.
+          #
+          # CVE-2025-69872 / diskcache:
+          #   Not remotely reachable in this deployment. Exploitation requires write
+          #   access to the local cache directory; public users cannot write files
+          #   inside the API container/cache path.
+
+          pip-audit -r requirements.lock \
+            --ignore-vuln CVE-2026-45829 \
+            --ignore-vuln CVE-2026-6587 \
+            --ignore-vuln CVE-2025-69872
 
   audit-web:
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: web
