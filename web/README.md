@@ -25,7 +25,7 @@ grounded answers token-by-token and renders citations as clickable source cards.
 The backend must be running first (see the [root README](../README.md#run-the-api)):
 
 ```bash
-python scripts/serve.py        # backend, from the repo root
+python -m kuberacle serve      # backend, from the repo root
 ```
 
 Then, from this directory:
