@@ -12,7 +12,12 @@ from kuberacle.domain import RetrievedChunk
 from kuberacle.generator import extract_citation_indices
 from kuberacle.interfaces import Generator, RelevanceGate, Retriever
 from kuberacle.observability import context as obs
-from kuberacle.observability.instrumentation import enrich_llm_observation, observe_stage
+from kuberacle.observability.instrumentation import (
+    enrich_llm_observation,
+    finalize_generation,
+    observe_stage,
+    start_generation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -330,16 +335,27 @@ class RAGQASystem:
 
         logger.debug("Retrieved %d chunks; streaming answer", len(chunks))
         parts: list[str] = []
-        with observe_stage(
-            "generation",
-            as_type="generation",
-            model=getattr(self.generator, "model_id", None),
-        ) as gen_obs:
-            for delta in self.generator.generate_stream(question, chunks):
-                parts.append(delta)
-                yield AnswerDelta(text=delta)
-            answer = "".join(parts)
-            enrich_llm_observation(gen_obs, "generation", output=answer)
+        # Use a non-current (manual) generation observation here: the streaming
+        # loop yields across Starlette's per-chunk context boundaries, which a
+        # current-context span cannot be detached across. Finalize in a finally
+        # so the span always ends, even if generation fails mid-stream.
+        gen_obs = start_generation(
+            "generation", model=getattr(self.generator, "model_id", None)
+        )
+        answer = ""
+        try:
+            with obs.stage_timer("generation"):
+                for delta in self.generator.generate_stream(question, chunks):
+                    parts.append(delta)
+                    yield AnswerDelta(text=delta)
+                answer = "".join(parts)
+        finally:
+            finalize_generation(
+                gen_obs,
+                "generation",
+                output=answer or None,
+                prompt=getattr(self.generator, "prompt_ref", None),
+            )
 
         citations = self._compute_citations(chunks, answer)
         if citations is None:

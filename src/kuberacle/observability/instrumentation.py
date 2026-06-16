@@ -85,6 +85,29 @@ def link_prompt(prompt_ref: Any) -> None:
         logger.debug("Linking managed prompt failed", exc_info=True)
 
 
+def _usage_and_cost(stage: str) -> tuple[dict | None, dict | None]:
+    """Read recorded token usage and cost for a stage from the active metrics.
+
+    Args:
+        stage: Stage key used when recording usage (e.g. ``generation``, ``gate``).
+
+    Returns:
+        A ``(usage_details, cost_details)`` tuple, each None when unavailable.
+    """
+    metrics = ctx.get_metrics()
+    if metrics is None:
+        return None, None
+    usage: dict[str, int] = {}
+    if f"{stage}_in" in metrics.tokens:
+        usage["input"] = metrics.tokens[f"{stage}_in"]
+    if f"{stage}_out" in metrics.tokens:
+        usage["output"] = metrics.tokens[f"{stage}_out"]
+    if usage:
+        usage["total"] = usage.get("input", 0) + usage.get("output", 0)
+    cost = {"total": metrics.cost_usd[stage]} if stage in metrics.cost_usd else None
+    return (usage or None), cost
+
+
 def enrich_llm_observation(
     observation: Any, stage: str, output: Any = None
 ) -> None:
@@ -99,24 +122,63 @@ def enrich_llm_observation(
             ``embed``).
         output: Optional output payload to record (e.g. the answer text).
     """
-    metrics = ctx.get_metrics()
-    if metrics is None:
-        return
-    usage: dict[str, int] = {}
-    if f"{stage}_in" in metrics.tokens:
-        usage["input"] = metrics.tokens[f"{stage}_in"]
-    if f"{stage}_out" in metrics.tokens:
-        usage["output"] = metrics.tokens[f"{stage}_out"]
-    if usage:
-        usage["total"] = usage.get("input", 0) + usage.get("output", 0)
-    cost_details = (
-        {"total": metrics.cost_usd[stage]} if stage in metrics.cost_usd else None
-    )
+    usage, cost_details = _usage_and_cost(stage)
     try:
         observation.update(
-            output=output,
-            usage_details=usage or None,
-            cost_details=cost_details,
+            output=output, usage_details=usage, cost_details=cost_details
         )
     except Exception:
         logger.debug("Observation enrichment for %r failed", stage, exc_info=True)
+
+
+def start_generation(name: str, model: str | None = None) -> Any:
+    """Start a non-current generation observation for a streamed stage.
+
+    A streamed stage yields across Starlette's per-chunk context boundaries, so
+    a current-context span (``start_as_current_observation``) cannot be detached
+    safely (it is entered and exited in different contexts). This starts a manual
+    observation that still nests in the trace but is not attached as the current
+    OpenTelemetry context, avoiding the detach error. Finalize it with
+    :func:`finalize_generation`. Returns None when tracing is disabled.
+
+    Args:
+        name: Stage name.
+        model: Model id for the generation observation.
+
+    Returns:
+        A Langfuse observation handle, or None.
+    """
+    client = get_langfuse()
+    if client is None:
+        return None
+    try:
+        return client.start_observation(name=name, as_type="generation", model=model)
+    except Exception:
+        logger.debug("Langfuse generation %r failed", name, exc_info=True)
+        return None
+
+
+def finalize_generation(
+    observation: Any, stage: str, output: Any = None, prompt: Any = None
+) -> None:
+    """Enrich a manual generation observation from metrics and end it.
+
+    Args:
+        observation: Handle from :func:`start_generation`, or None.
+        stage: Stage key used when recording usage (e.g. ``generation``).
+        output: Output payload to record (e.g. the answer text).
+        prompt: Optional managed prompt object to link.
+    """
+    if observation is None:
+        return
+    usage, cost_details = _usage_and_cost(stage)
+    try:
+        observation.update(
+            output=output,
+            usage_details=usage,
+            cost_details=cost_details,
+            prompt=prompt,
+        )
+        observation.end()
+    except Exception:
+        logger.debug("Finalizing generation observation failed", exc_info=True)

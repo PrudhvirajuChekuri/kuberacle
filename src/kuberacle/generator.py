@@ -126,7 +126,9 @@ class VertexAIAnswerGenerator:
             Non-empty text fragments in generation order.
         """
         logger.debug("Streaming answer from %d context chunks", len(chunks))
-        link_prompt(self.prompt_ref)
+        # Prompt linkage for the streaming path is set on the manual generation
+        # observation in the orchestration layer (see qa.ask_stream), not here,
+        # because there is no current-context generation span while streaming.
         system_prompt, user_prompt = self._build_prompts(question, chunks)
         yield from self._stream_with_gemini(system_prompt, user_prompt)
 
