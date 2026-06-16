@@ -145,11 +145,11 @@ The stream emits these SSE events:
 
 ```
 event: token   data: {"text": "..."}                              # repeated, live
-event: final   data: {"citations": [...], "insufficient_evidence": false}
+event: final   data: {"citations": [...], "insufficient_evidence": false, "abstained": false}
 event: error   data: {"message": "..."}
 ```
 
-`insufficient_evidence` is `true` when no citations could be validated for the streamed answer. A `GET /health` endpoint returns `{"status": "ok"}` without invoking the model.
+`insufficient_evidence` is `true` when no citations could be validated for the streamed answer; `abstained` is `true` when the answer is an explicit abstention (the model or pre-RAG gate declined to answer). A `GET /health` endpoint returns `{"status": "ok"}` without invoking the model.
 
 ## Web UI
 
@@ -168,6 +168,15 @@ npm run dev        # http://localhost:3000
 The frontend proxies requests to the backend via `RAG_API_URL` (defaults to `http://127.0.0.1:8000`, set in `web/.env.local`).
 
 **Stack:** Next.js (App Router) + TypeScript, Tailwind CSS + shadcn/ui, `react-markdown`. A custom hook consumes the SSE stream; clicking an inline `[n]` marker scrolls to and highlights its citation card, hovering one shows a source preview, and an "ungrounded" notice is shown when the answer could not be verified.
+
+## Observability
+
+Production observability spans two planes on one OpenTelemetry instrumentation spine:
+
+- **Operational plane (GCP-native):** structured JSON logs to Cloud Logging (trace-correlated), app and downstream spans to Cloud Trace, log-based metrics, a Cloud Monitoring dashboard, alerts, and Error Reporting. The API emits one `request_summary` event per request carrying RED signals, per-stage latency (gate, semantic, bm25, merge, rerank, generation), token usage, estimated cost (with the reranker as its own line item), the RAG outcome (answered / abstained / unverified / no-retrieval), and guardrail signal. It records metadata only, never question or answer text.
+- **LLM/product plane (Langfuse):** the per-query trace (retrieval -> rerank -> generation) with token cost, plus prompt management. Prompts stay versioned in `configs/prompts/` (the source of truth) and are pushed to Langfuse with `python -m kuberacle sync-prompts`; the running service serves the managed copy with the files as fallback.
+
+Observability is off by default (local dev, tests, CLI). Enable it in deployment with `OBSERVABILITY_ENABLED=true` and the `LANGFUSE_*` env vars; non-secret knobs (service name, log level/format, trace sample ratio) and the cost prices live in `configs/rag.yaml`. The dashboards, log-based metrics, alerts, and uptime check are committed as reproducible IaC under `deploy/observability/` (see its README).
 
 ## Run with Docker
 
