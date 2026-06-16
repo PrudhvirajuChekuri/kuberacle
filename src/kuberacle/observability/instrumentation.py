@@ -27,18 +27,112 @@ class _NoopObservation:
         """Ignore enrichment when no tracing backend is active."""
 
 
+def _root_trace_context() -> dict | None:
+    """Trace context pointing top-level stages at the per-request root span.
+
+    Returns:
+        A ``{"trace_id", "parent_span_id"}`` dict when a request root exists,
+        else None (so the observation falls back to the current OTel context).
+    """
+    metrics = ctx.get_metrics()
+    if metrics is None or metrics.trace_id is None:
+        return None
+    trace_context: dict = {"trace_id": metrics.trace_id}
+    if metrics.root_span_id is not None:
+        trace_context["parent_span_id"] = metrics.root_span_id
+    return trace_context
+
+
+def start_request_root(name: str, user_input: Any = None) -> Any:
+    """Open the single root observation that all stages of a request nest under.
+
+    Creates one Langfuse trace per request and records its id and span id in the
+    active metrics so the top-level stages (gate, retrieval, generation) attach
+    to it via :func:`_root_trace_context`. Returns None when tracing is off.
+
+    Args:
+        name: Root observation name (e.g. ``query``).
+        user_input: Request input to record on the trace (e.g. the question).
+
+    Returns:
+        The root observation handle, or None.
+    """
+    client = get_langfuse()
+    metrics = ctx.get_metrics()
+    if client is None or metrics is None:
+        return None
+    try:
+        from opentelemetry import trace
+
+        # Reuse the request's OTel trace (FastAPI span / propagated web
+        # traceparent) when it is in context, so the Langfuse trace and the
+        # Cloud Trace HTTP span stay unified; otherwise mint a fresh trace.
+        span_ctx = trace.get_current_span().get_span_context()
+        if span_ctx.is_valid:
+            trace_id = format(span_ctx.trace_id, "032x")
+            trace_context = {
+                "trace_id": trace_id,
+                "parent_span_id": format(span_ctx.span_id, "016x"),
+            }
+        else:
+            trace_id = client.create_trace_id()
+            trace_context = {"trace_id": trace_id}
+        root = client.start_observation(
+            name=name,
+            as_type="span",
+            input=user_input,
+            trace_context=trace_context,
+        )
+        metrics.trace_id = trace_id
+        metrics.root_span_id = root.id
+        return root
+    except Exception:
+        logger.debug("Langfuse request root failed", exc_info=True)
+        return None
+
+
+def finalize_request_root(observation: Any, output: Any = None) -> None:
+    """Record the request output and cost breakdown on the root, then end it.
+
+    The full cost breakdown (including the reranker's Discovery Engine cost) is
+    attached as trace metadata, not as Langfuse ``cost_details``: metadata is
+    visible and searchable on the trace without polluting Langfuse's LLM-only
+    cost views. The authoritative cost record remains the ``request_summary`` log.
+
+    Args:
+        observation: Handle from :func:`start_request_root`, or None.
+        output: Request output to record on the trace (e.g. the answer).
+    """
+    if observation is None:
+        return
+    metadata = None
+    metrics = ctx.get_metrics()
+    if metrics is not None:
+        cost = dict(metrics.cost_usd)
+        cost["total"] = round(metrics.total_cost_usd(), 6)
+        metadata = {"cost_usd": cost, "rerank_queries": metrics.rerank_queries}
+    try:
+        observation.update(output=output, metadata=metadata)
+        observation.end()
+    except Exception:
+        logger.debug("Finalizing request root failed", exc_info=True)
+
+
 @contextmanager
 def observe_stage(
     name: str,
     as_type: str = "span",
     model: str | None = None,
     user_input: Any = None,
+    root: bool = False,
 ) -> Iterator[Any]:
     """Time a pipeline stage and, when tracing is on, open a Langfuse observation.
 
     The stage is always timed into the active request metrics. When a Langfuse
-    client is configured, the stage is also opened as an observation (an OTel
-    span on the shared provider). Observation errors never break the pipeline.
+    client is configured, the stage is also opened as an observation. Top-level
+    stages pass ``root=True`` so they attach to the per-request root trace;
+    sub-stages omit it and nest under the current observation. Observation errors
+    never break the pipeline.
 
     Args:
         name: Stage name (e.g. ``gate``, ``semantic``, ``rerank``, ``generation``).
@@ -46,6 +140,7 @@ def observe_stage(
             ``embedding``, ``retriever``, ...).
         model: Model id, for generation/embedding observations.
         user_input: Optional input payload to record on the observation.
+        root: Whether this is a top-level stage that attaches to the request root.
 
     Yields:
         An observation handle exposing ``update(**kwargs)``; a no-op when tracing
@@ -58,7 +153,11 @@ def observe_stage(
             return
         try:
             with client.start_as_current_observation(
-                name=name, as_type=as_type, model=model, input=user_input
+                name=name,
+                as_type=as_type,
+                model=model,
+                input=user_input,
+                trace_context=_root_trace_context() if root else None,
             ) as observation:
                 yield observation
         except Exception:
@@ -131,19 +230,22 @@ def enrich_llm_observation(
         logger.debug("Observation enrichment for %r failed", stage, exc_info=True)
 
 
-def start_generation(name: str, model: str | None = None) -> Any:
+def start_generation(
+    name: str, model: str | None = None, user_input: Any = None
+) -> Any:
     """Start a non-current generation observation for a streamed stage.
 
     A streamed stage yields across Starlette's per-chunk context boundaries, so
     a current-context span (``start_as_current_observation``) cannot be detached
     safely (it is entered and exited in different contexts). This starts a manual
-    observation that still nests in the trace but is not attached as the current
+    observation that attaches to the per-request root trace but is not the current
     OpenTelemetry context, avoiding the detach error. Finalize it with
     :func:`finalize_generation`. Returns None when tracing is disabled.
 
     Args:
         name: Stage name.
         model: Model id for the generation observation.
+        user_input: Optional input payload to record (e.g. the question).
 
     Returns:
         A Langfuse observation handle, or None.
@@ -152,7 +254,13 @@ def start_generation(name: str, model: str | None = None) -> Any:
     if client is None:
         return None
     try:
-        return client.start_observation(name=name, as_type="generation", model=model)
+        return client.start_observation(
+            name=name,
+            as_type="generation",
+            model=model,
+            input=user_input,
+            trace_context=_root_trace_context(),
+        )
     except Exception:
         logger.debug("Langfuse generation %r failed", name, exc_info=True)
         return None

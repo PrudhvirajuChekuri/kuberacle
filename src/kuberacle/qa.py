@@ -136,6 +136,30 @@ def _make_snippet(content: str, limit: int = 200, title: str = "") -> str:
     return text
 
 
+def _trace_chunks(chunks: list[RetrievedChunk]) -> list[dict]:
+    """Build a compact, trace-friendly view of retrieved chunks.
+
+    Captures the evidence retrieval produced (id, section title, relevance
+    score, and a short content preview) so a trace shows why an answer was
+    grounded the way it was, without dumping full chunk bodies.
+
+    Args:
+        chunks: Retrieved context chunks, in prompt order.
+
+    Returns:
+        A list of compact dicts, one per chunk.
+    """
+    return [
+        {
+            "chunk_id": chunk.chunk_id,
+            "title": _chunk_title(chunk.metadata),
+            "score": round(chunk.score, 4),
+            "preview": chunk.content[:200],
+        }
+        for chunk in chunks
+    ]
+
+
 @dataclass(frozen=True)
 class Citation:
     """Citation record for generated answer provenance.
@@ -225,14 +249,15 @@ class RAGQASystem:
             "gate",
             as_type="generation",
             model=getattr(self.relevance_gate, "model_id", None),
+            user_input=question,
+            root=True,
         ) as gate_obs:
             out_of_scope = self._is_out_of_scope(question)
-            enrich_llm_observation(gate_obs, "gate")
-        obs.update_metrics(
-            gate_decision=obs.GATE_OUT_OF_SCOPE
-            if out_of_scope
-            else obs.GATE_IN_SCOPE
-        )
+            decision = (
+                obs.GATE_OUT_OF_SCOPE if out_of_scope else obs.GATE_IN_SCOPE
+            )
+            enrich_llm_observation(gate_obs, "gate", output=decision)
+        obs.update_metrics(gate_decision=decision)
         return out_of_scope
 
     def ask(self, question: str, top_k: int | None = None) -> QAResult:
@@ -254,8 +279,11 @@ class RAGQASystem:
                 citations=[],
                 retrieved_chunks=[],
             )
-        with observe_stage("retrieval", as_type="retriever"):
+        with observe_stage(
+            "retrieval", as_type="retriever", user_input=question, root=True
+        ) as retr_obs:
             chunks = self.retriever.retrieve(question, top_k=top_k)
+            retr_obs.update(output=_trace_chunks(chunks))
         obs.update_metrics(chunks_retrieved=len(chunks))
         if not chunks:
             logger.warning("No chunks retrieved for question: %r", question[:100])
@@ -271,6 +299,8 @@ class RAGQASystem:
             "generation",
             as_type="generation",
             model=getattr(self.generator, "model_id", None),
+            user_input=question,
+            root=True,
         ) as gen_obs:
             answer = self.generator.generate(question, chunks)
             enrich_llm_observation(gen_obs, "generation", output=answer)
@@ -319,8 +349,11 @@ class RAGQASystem:
                 retrieved_chunks=[],
             )
             return
-        with observe_stage("retrieval", as_type="retriever"):
+        with observe_stage(
+            "retrieval", as_type="retriever", user_input=question, root=True
+        ) as retr_obs:
             chunks = self.retriever.retrieve(question, top_k=top_k)
+            retr_obs.update(output=_trace_chunks(chunks))
         obs.update_metrics(chunks_retrieved=len(chunks))
         if not chunks:
             logger.warning("No chunks retrieved for question: %r", question[:100])
@@ -340,7 +373,9 @@ class RAGQASystem:
         # current-context span cannot be detached across. Finalize in a finally
         # so the span always ends, even if generation fails mid-stream.
         gen_obs = start_generation(
-            "generation", model=getattr(self.generator, "model_id", None)
+            "generation",
+            model=getattr(self.generator, "model_id", None),
+            user_input=question,
         )
         answer = ""
         try:

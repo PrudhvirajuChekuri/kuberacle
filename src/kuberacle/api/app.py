@@ -36,6 +36,10 @@ from kuberacle.constants import is_abstention
 from kuberacle.factory import build_qa_system
 from kuberacle.observability import context as obs
 from kuberacle.observability.events import emit_request_summary
+from kuberacle.observability.instrumentation import (
+    finalize_request_root,
+    start_request_root,
+)
 from kuberacle.observability.logging import configure_logging
 from kuberacle.observability.settings import load_observability_settings
 from kuberacle.observability.tracing import TracingHandles, configure_tracing
@@ -230,11 +234,16 @@ def create_app() -> FastAPI:
             obs.set_metrics(metrics)
 
         def event_stream() -> Iterator[str]:
+            # One root observation per request so the pipeline stages nest under
+            # a single Langfuse trace (no-op when tracing is disabled).
+            root = start_request_root("query", user_input=payload.question)
+            final_answer = ""
             try:
                 for event in qa_system.ask_stream(payload.question):
                     if isinstance(event, AnswerDelta):
                         yield _sse("token", {"text": event.text})
                     else:
+                        final_answer = event.answer
                         citations = [
                             CitationModel(
                                 index=citation.index,
@@ -260,6 +269,7 @@ def create_app() -> FastAPI:
                     metrics.outcome = obs.OUTCOME_ERROR
                 yield _sse("error", {"message": "Internal error generating answer."})
             finally:
+                finalize_request_root(root, output=final_answer or None)
                 if metrics is not None:
                     emit_request_summary(
                         metrics,

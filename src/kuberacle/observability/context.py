@@ -49,6 +49,9 @@ class RequestMetrics:
         tokens: Token counts keyed by ``<stage>_in`` / ``<stage>_out``.
         cost_usd: Estimated cost in USD keyed by stage.
         rerank_queries: Number of billable reranking queries issued.
+        trace_id: Langfuse/OTel trace id for this request, when tracing is on.
+        root_span_id: Span id of the per-request root observation, used to nest
+            the top-level pipeline stages under a single trace.
     """
 
     pricing: PricingConfig
@@ -64,6 +67,8 @@ class RequestMetrics:
     tokens: dict[str, int] = field(default_factory=dict)
     cost_usd: dict[str, float] = field(default_factory=dict)
     rerank_queries: int = 0
+    trace_id: str | None = None
+    root_span_id: str | None = None
 
     def total_cost_usd(self) -> float:
         """Return the summed estimated cost across all stages."""
