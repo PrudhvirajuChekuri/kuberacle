@@ -8,7 +8,11 @@ from kuberacle.ingestion.vector_store import ChromaVectorStore
 from kuberacle.retrieval.bm25 import BM25Retriever
 from kuberacle.gate import VertexAIRelevanceGate
 from kuberacle.generator import VertexAIAnswerGenerator
-from kuberacle.prompts import load_gate_prompt, load_prompt_bundle
+from kuberacle.observability.prompts import (
+    load_answer_prompt,
+    load_gate_prompt_managed,
+)
+from kuberacle.observability.tracing import get_langfuse
 from kuberacle.qa import RAGQASystem
 from kuberacle.retrieval.reranker import DiscoveryEngineReranker
 from kuberacle.retrieval.retriever import HybridRetriever, SemanticRetriever
@@ -65,9 +69,10 @@ def build_qa_system(config: RAGConfig, project_root: Path) -> RAGQASystem:
         semantic_weight=config.retrieval.hybrid_weight_semantic,
         lexical_weight=config.retrieval.hybrid_weight_lexical,
     )
-    prompt_bundle = load_prompt_bundle(
-        base_dir=str(project_root / config.prompts.directory),
-        version=config.prompts.version,
+    prompt_dir = str(project_root / config.prompts.directory)
+    langfuse = get_langfuse()
+    prompt_bundle, prompt_ref = load_answer_prompt(
+        prompt_dir, config.prompts.version, langfuse
     )
     generator = VertexAIAnswerGenerator(
         model_id=config.generation.model_id,
@@ -76,18 +81,19 @@ def build_qa_system(config: RAGConfig, project_root: Path) -> RAGQASystem:
         temperature=config.generation.temperature,
         max_tokens=config.generation.max_tokens,
         prompt_bundle=prompt_bundle,
+        prompt_ref=prompt_ref,
     )
     relevance_gate = None
     if config.gate.enabled:
-        gate_prompt = load_gate_prompt(
-            base_dir=str(project_root / config.prompts.directory),
-            version=config.prompts.version,
+        gate_prompt, gate_ref = load_gate_prompt_managed(
+            prompt_dir, config.prompts.version, langfuse
         )
         relevance_gate = VertexAIRelevanceGate(
             model_id=config.gate.model_id,
             gcp_project=config.gcp_project,
             gcp_location=config.gcp_location,
             prompt_bundle=gate_prompt,
+            prompt_ref=gate_ref,
         )
     return RAGQASystem(
         retriever=retriever,

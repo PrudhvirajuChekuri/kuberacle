@@ -7,7 +7,9 @@ from typing import Any
 
 from kuberacle.constants import ABSTENTION_SENTINEL
 from kuberacle.domain import RetrievedChunk
-from kuberacle.vertex import make_vertex_client
+from kuberacle.observability import context as obs
+from kuberacle.observability.instrumentation import link_prompt
+from kuberacle.vertex import extract_token_usage, make_vertex_client
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,7 @@ class VertexAIAnswerGenerator:
         temperature: Generation temperature.
         max_tokens: Maximum generated tokens.
         prompt_bundle: Versioned prompt strings keyed by role.
+        prompt_ref: Optional managed prompt object to link in traces.
         genai_client: Optional injected Gen AI client for testing.
     """
 
@@ -49,6 +52,7 @@ class VertexAIAnswerGenerator:
         temperature: float = 0.2,
         max_tokens: int = 600,
         prompt_bundle: dict[str, str] | None = None,
+        prompt_ref: Any = None,
         genai_client: Any = None,
     ) -> None:
         self.model_id = model_id
@@ -57,6 +61,7 @@ class VertexAIAnswerGenerator:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.prompt_bundle = prompt_bundle or {}
+        self.prompt_ref = prompt_ref
         self._client = genai_client
 
     @property
@@ -104,6 +109,7 @@ class VertexAIAnswerGenerator:
             Generated answer text.
         """
         logger.debug("Generating answer from %d context chunks", len(chunks))
+        link_prompt(self.prompt_ref)
         system_prompt, user_prompt = self._build_prompts(question, chunks)
         return self._generate_with_gemini(system_prompt, user_prompt)
 
@@ -120,6 +126,7 @@ class VertexAIAnswerGenerator:
             Non-empty text fragments in generation order.
         """
         logger.debug("Streaming answer from %d context chunks", len(chunks))
+        link_prompt(self.prompt_ref)
         system_prompt, user_prompt = self._build_prompts(question, chunks)
         yield from self._stream_with_gemini(system_prompt, user_prompt)
 
@@ -148,6 +155,10 @@ class VertexAIAnswerGenerator:
                 temperature=self.temperature,
                 max_output_tokens=self.max_tokens,
             ),
+        )
+        obs.record_model_usage(
+            "generation",
+            *extract_token_usage(getattr(response, "usage_metadata", None)),
         )
         text = response.text
         if not text:
@@ -183,10 +194,20 @@ class VertexAIAnswerGenerator:
                 max_output_tokens=self.max_tokens,
             ),
         )
-        for chunk in stream:
-            text = chunk.text
-            if text:
-                yield text
+        usage_metadata: Any = None
+        try:
+            for chunk in stream:
+                # The aggregated usage arrives on the final chunk(s); keep the
+                # latest non-empty one to record after the stream completes.
+                if getattr(chunk, "usage_metadata", None) is not None:
+                    usage_metadata = chunk.usage_metadata
+                text = chunk.text
+                if text:
+                    yield text
+        finally:
+            obs.record_model_usage(
+                "generation", *extract_token_usage(usage_metadata)
+            )
 
 
 def extract_citation_indices(answer: str) -> list[int]:

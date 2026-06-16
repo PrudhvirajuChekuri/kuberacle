@@ -40,6 +40,29 @@ generation:
   temperature: 0.2
   max_tokens: 600
 
+# Per-query prices used to estimate spend in the observability layer (USD).
+# Verified 2026-06-15 from official Google pricing (Vertex AI standard tier):
+#   generation (gemini-2.5-flash-lite): https://cloud.google.com/vertex-ai/generative-ai/pricing
+#   embedding (gemini-embedding-001):   https://ai.google.dev/gemini-api/docs/pricing
+#   reranker (Discovery Engine):        https://cloud.google.com/generative-ai-app-builder/pricing
+# Prices change over time; update them here rather than hard-coding in code.
+pricing:
+  generation_input_per_1m_usd: 0.10
+  generation_output_per_1m_usd: 0.40
+  embedding_input_per_1m_usd: 0.15
+  reranker_per_1k_queries_usd: 1.00
+
+# Logging and tracing behavior for the serving layer. Secrets and the master
+# on/off switch are env-driven (see observability/settings.py); these are the
+# non-secret runtime knobs and stay in the single config source of truth.
+observability:
+  service_name: "kuberacle-api"
+  logging:
+    level: "INFO"
+    format: "json"
+  tracing:
+    sample_ratio: 1.0
+
 evaluation:
   dataset_path: "evals/golden/v2.jsonl"
   retrieval_recall_at_k_threshold: 0.90

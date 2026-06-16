@@ -26,6 +26,12 @@ api = [
     "fastapi>=0.136",
     "uvicorn[standard]>=0.49",
     "google-cloud-firestore>=2.27",
+    "opentelemetry-sdk>=1.30",
+    "opentelemetry-exporter-gcp-trace>=1.9",
+    "opentelemetry-exporter-otlp-proto-http>=1.30",
+    "opentelemetry-instrumentation-fastapi>=0.51b0",
+    "opentelemetry-instrumentation-requests>=0.51b0",
+    "langfuse>=4.0",
 ]
 eval = [
     "datasets>=5.0",
@@ -48,6 +54,7 @@ kuberacle-evaluate = "kuberacle.cli.evaluate:main"
 kuberacle-serve = "kuberacle.cli.serve:main"
 kuberacle-push-index = "kuberacle.cli.push_index:main"
 kuberacle-pull-index = "kuberacle.cli.pull_index:main"
+kuberacle-sync-prompts = "kuberacle.cli.sync_prompts:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
