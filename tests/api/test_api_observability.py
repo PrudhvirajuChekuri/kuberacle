@@ -69,6 +69,38 @@ def test_summary_emitted_once_on_answered(caplog):
     assert ctx.get_metrics() is None
 
 
+class StreamingFakeQA:
+    """Stub that records outcome AFTER yielding a token, like the real pipeline.
+
+    This guards the metrics-binding contract: the real generator records token
+    usage and the final outcome mid/post-stream, which is only captured if the
+    metrics context survives across the streaming generator's chunk boundaries.
+    """
+
+    def ask_stream(self, question, top_k=None):
+        del question, top_k
+        yield AnswerDelta("first ")
+        yield AnswerDelta("token")
+        # Recorded only after the first token has been streamed.
+        ctx.update_metrics(outcome=ctx.OUTCOME_ANSWERED, citations_count=3)
+        yield QAResult("first token", [], [])
+
+
+def test_metrics_recorded_after_first_token_are_captured(caplog):
+    """Outcome recorded mid/post-stream survives the streaming context boundary."""
+    app = create_app()
+    app.state.qa_system = StreamingFakeQA()
+    app.state.pricing = PRICING
+    with caplog.at_level(logging.INFO, logger="kuberacle.observability.request"):
+        resp = TestClient(app).post("/query", json={"question": "q"})
+
+    assert resp.status_code == 200
+    summaries = _summaries(caplog)
+    assert len(summaries) == 1
+    assert summaries[0].outcome == ctx.OUTCOME_ANSWERED
+    assert summaries[0].citations_count == 3
+
+
 def test_no_summary_without_pricing(caplog):
     """With no pricing wired (lifespan skipped), no summary is emitted."""
     events = [AnswerDelta("x"), QAResult("x", [], [])]

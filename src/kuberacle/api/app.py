@@ -215,18 +215,21 @@ def create_app() -> FastAPI:
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
                 )
 
+        # Bind the metrics in this request coroutine's context, not inside the
+        # streaming generator: Starlette iterates a sync streaming body in a
+        # fresh threadpool context copy per chunk, so a binding made inside it
+        # would not survive past the first token. Binding here means every
+        # per-chunk copy inherits it, so usage/outcome recorded mid- and
+        # post-stream is captured. The binding is scoped to this request's task.
+        metrics = (
+            _new_metrics(pricing, payload.question, cold_start)
+            if pricing is not None
+            else None
+        )
+        if metrics is not None:
+            obs.set_metrics(metrics)
+
         def event_stream() -> Iterator[str]:
-            metrics = (
-                _new_metrics(pricing, payload.question, cold_start)
-                if pricing is not None
-                else None
-            )
-            # Bind without a reset token: the streaming body runs in its own
-            # context (Starlette iterates it in a threadpool), so a token created
-            # here is not valid to reset in the finally; clearing to None at the
-            # end keeps the binding scoped to this request.
-            if metrics is not None:
-                obs.set_metrics(metrics)
             try:
                 for event in qa_system.ask_stream(payload.question):
                     if isinstance(event, AnswerDelta):
