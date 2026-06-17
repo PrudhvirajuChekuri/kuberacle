@@ -167,6 +167,40 @@ class EvalConfig:
 
 
 @dataclass(frozen=True)
+class PricingConfig:
+    """Per-query prices used to estimate spend (USD).
+
+    Attributes:
+        generation_input_per_1m_usd: Generation input price per 1M tokens.
+        generation_output_per_1m_usd: Generation output price per 1M tokens.
+        embedding_input_per_1m_usd: Embedding input price per 1M tokens.
+        reranker_per_1k_queries_usd: Reranker price per 1000 ranking queries.
+    """
+
+    generation_input_per_1m_usd: float
+    generation_output_per_1m_usd: float
+    embedding_input_per_1m_usd: float
+    reranker_per_1k_queries_usd: float
+
+
+@dataclass(frozen=True)
+class ObservabilityConfig:
+    """Non-secret logging and tracing knobs for the serving layer.
+
+    Attributes:
+        service_name: Service name attached to logs and trace spans.
+        log_level: Root log level name (e.g. ``INFO``).
+        log_format: ``json`` for structured production logs, ``text`` for local.
+        trace_sample_ratio: Fraction of traces to sample (0.0-1.0).
+    """
+
+    service_name: str
+    log_level: str
+    log_format: str
+    trace_sample_ratio: float
+
+
+@dataclass(frozen=True)
 class RAGConfig:
     """Runtime config for ingestion and retrieval, grouped by concern.
 
@@ -182,6 +216,8 @@ class RAGConfig:
         gate: Pre-retrieval relevance gate settings.
         prompts: Prompt selection.
         evaluation: Evaluation dataset and gate thresholds.
+        pricing: Per-query prices for cost estimation.
+        observability: Logging and tracing knobs for the serving layer.
     """
 
     gcp_project: str
@@ -195,6 +231,8 @@ class RAGConfig:
     gate: GateConfig
     prompts: PromptConfig
     evaluation: EvalConfig
+    pricing: PricingConfig
+    observability: ObservabilityConfig
 
 
 def load_rag_config(config_path: str | Path) -> RAGConfig:
@@ -231,6 +269,10 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
     gate = data.get("gate", {})
     prompts = data.get("prompts", {})
     evaluation = data.get("evaluation", {})
+    pricing = data.get("pricing", {})
+    observability = data.get("observability", {})
+    obs_logging = observability.get("logging", {})
+    obs_tracing = observability.get("tracing", {})
 
     try:
         embedding_model_id = data["models"]["embedding"]
@@ -343,5 +385,25 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
             answer_relevancy_min_parsed=int(
                 evaluation.get("answer_relevancy_min_parsed", 10)
             ),
+        ),
+        pricing=PricingConfig(
+            generation_input_per_1m_usd=float(
+                pricing.get("generation_input_per_1m_usd", 0.10)
+            ),
+            generation_output_per_1m_usd=float(
+                pricing.get("generation_output_per_1m_usd", 0.40)
+            ),
+            embedding_input_per_1m_usd=float(
+                pricing.get("embedding_input_per_1m_usd", 0.15)
+            ),
+            reranker_per_1k_queries_usd=float(
+                pricing.get("reranker_per_1k_queries_usd", 1.00)
+            ),
+        ),
+        observability=ObservabilityConfig(
+            service_name=str(observability.get("service_name", "kuberacle-api")),
+            log_level=str(obs_logging.get("level", "INFO")),
+            log_format=str(obs_logging.get("format", "json")),
+            trace_sample_ratio=float(obs_tracing.get("sample_ratio", 1.0)),
         ),
     )

@@ -11,6 +11,13 @@ from kuberacle.constants import ABSTENTION_SENTINEL
 from kuberacle.domain import RetrievedChunk
 from kuberacle.generator import extract_citation_indices
 from kuberacle.interfaces import Generator, RelevanceGate, Retriever
+from kuberacle.observability import context as obs
+from kuberacle.observability.instrumentation import (
+    enrich_llm_observation,
+    finalize_generation,
+    observe_stage,
+    start_generation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +136,30 @@ def _make_snippet(content: str, limit: int = 200, title: str = "") -> str:
     return text
 
 
+def _trace_chunks(chunks: list[RetrievedChunk]) -> list[dict]:
+    """Build a compact, trace-friendly view of retrieved chunks.
+
+    Captures the evidence retrieval produced (id, section title, relevance
+    score, and a short content preview) so a trace shows why an answer was
+    grounded the way it was, without dumping full chunk bodies.
+
+    Args:
+        chunks: Retrieved context chunks, in prompt order.
+
+    Returns:
+        A list of compact dicts, one per chunk.
+    """
+    return [
+        {
+            "chunk_id": chunk.chunk_id,
+            "title": _chunk_title(chunk.metadata),
+            "score": round(chunk.score, 4),
+            "preview": chunk.content[:200],
+        }
+        for chunk in chunks
+    ]
+
+
 @dataclass(frozen=True)
 class Citation:
     """Citation record for generated answer provenance.
@@ -202,6 +233,33 @@ class RAGQASystem:
             return False
         return not self.relevance_gate.is_relevant(question)
 
+    def _run_gate(self, question: str) -> bool:
+        """Run the relevance gate as a traced stage and record its decision.
+
+        Args:
+            question: User question.
+
+        Returns:
+            True when the gate classifies the question as out of scope. Always
+            False (and the decision stays ``skipped``) when no gate is wired.
+        """
+        if self.relevance_gate is None:
+            return False
+        with observe_stage(
+            "gate",
+            as_type="generation",
+            model=getattr(self.relevance_gate, "model_id", None),
+            user_input=question,
+            root=True,
+        ) as gate_obs:
+            out_of_scope = self._is_out_of_scope(question)
+            decision = (
+                obs.GATE_OUT_OF_SCOPE if out_of_scope else obs.GATE_IN_SCOPE
+            )
+            enrich_llm_observation(gate_obs, "gate", output=decision)
+        obs.update_metrics(gate_decision=decision)
+        return out_of_scope
+
     def ask(self, question: str, top_k: int | None = None) -> QAResult:
         """Answer a user question with source citations.
 
@@ -213,15 +271,23 @@ class RAGQASystem:
             QA result with answer and citations.
         """
         logger.info("Processing question: %r", question[:100])
-        if self._is_out_of_scope(question):
+        obs.update_metrics(question_length=len(question))
+        if self._run_gate(question):
+            obs.update_metrics(outcome=obs.OUTCOME_GATE_ABSTAINED)
             return QAResult(
                 answer=_OUT_OF_SCOPE_ANSWER,
                 citations=[],
                 retrieved_chunks=[],
             )
-        chunks = self.retriever.retrieve(question, top_k=top_k)
+        with observe_stage(
+            "retrieval", as_type="retriever", user_input=question, root=True
+        ) as retr_obs:
+            chunks = self.retriever.retrieve(question, top_k=top_k)
+            retr_obs.update(output=_trace_chunks(chunks))
+        obs.update_metrics(chunks_retrieved=len(chunks))
         if not chunks:
             logger.warning("No chunks retrieved for question: %r", question[:100])
+            obs.update_metrics(outcome=obs.OUTCOME_NO_RETRIEVAL)
             return QAResult(
                 answer=_NO_RETRIEVAL_ANSWER,
                 citations=[],
@@ -229,11 +295,25 @@ class RAGQASystem:
             )
 
         logger.debug("Retrieved %d chunks; generating answer", len(chunks))
-        answer = self.generator.generate(question, chunks)
+        with observe_stage(
+            "generation",
+            as_type="generation",
+            model=getattr(self.generator, "model_id", None),
+            user_input=question,
+            root=True,
+        ) as gen_obs:
+            answer = self.generator.generate(question, chunks)
+            enrich_llm_observation(gen_obs, "generation", output=answer)
         citations = self._compute_citations(chunks, answer)
         if citations is None:
+            obs.update_metrics(
+                outcome=obs.OUTCOME_UNVERIFIED, insufficient_evidence=True
+            )
             return self._insufficient_with_chunks(chunks)
 
+        obs.update_metrics(
+            outcome=obs.OUTCOME_ANSWERED, citations_count=len(citations)
+        )
         return QAResult(
             answer=answer,
             citations=citations,
@@ -259,7 +339,9 @@ class RAGQASystem:
             Zero or more ``AnswerDelta`` items, then one terminal ``QAResult``.
         """
         logger.info("Processing question (stream): %r", question[:100])
-        if self._is_out_of_scope(question):
+        obs.update_metrics(question_length=len(question))
+        if self._run_gate(question):
+            obs.update_metrics(outcome=obs.OUTCOME_GATE_ABSTAINED)
             yield AnswerDelta(text=_OUT_OF_SCOPE_ANSWER)
             yield QAResult(
                 answer=_OUT_OF_SCOPE_ANSWER,
@@ -267,9 +349,15 @@ class RAGQASystem:
                 retrieved_chunks=[],
             )
             return
-        chunks = self.retriever.retrieve(question, top_k=top_k)
+        with observe_stage(
+            "retrieval", as_type="retriever", user_input=question, root=True
+        ) as retr_obs:
+            chunks = self.retriever.retrieve(question, top_k=top_k)
+            retr_obs.update(output=_trace_chunks(chunks))
+        obs.update_metrics(chunks_retrieved=len(chunks))
         if not chunks:
             logger.warning("No chunks retrieved for question: %r", question[:100])
+            obs.update_metrics(outcome=obs.OUTCOME_NO_RETRIEVAL)
             yield AnswerDelta(text=_NO_RETRIEVAL_ANSWER)
             yield QAResult(
                 answer=_NO_RETRIEVAL_ANSWER,
@@ -280,14 +368,40 @@ class RAGQASystem:
 
         logger.debug("Retrieved %d chunks; streaming answer", len(chunks))
         parts: list[str] = []
-        for delta in self.generator.generate_stream(question, chunks):
-            parts.append(delta)
-            yield AnswerDelta(text=delta)
-        answer = "".join(parts)
+        # Use a non-current (manual) generation observation here: the streaming
+        # loop yields across Starlette's per-chunk context boundaries, which a
+        # current-context span cannot be detached across. Finalize in a finally
+        # so the span always ends, even if generation fails mid-stream.
+        gen_obs = start_generation(
+            "generation",
+            model=getattr(self.generator, "model_id", None),
+            user_input=question,
+        )
+        answer = ""
+        try:
+            with obs.stage_timer("generation"):
+                for delta in self.generator.generate_stream(question, chunks):
+                    parts.append(delta)
+                    yield AnswerDelta(text=delta)
+                answer = "".join(parts)
+        finally:
+            finalize_generation(
+                gen_obs,
+                "generation",
+                output=answer or None,
+                prompt=getattr(self.generator, "prompt_ref", None),
+            )
 
         citations = self._compute_citations(chunks, answer)
         if citations is None:
             logger.warning("Insufficient evidence: streamed answer is ungrounded")
+            obs.update_metrics(
+                outcome=obs.OUTCOME_UNVERIFIED, insufficient_evidence=True
+            )
+        else:
+            obs.update_metrics(
+                outcome=obs.OUTCOME_ANSWERED, citations_count=len(citations)
+            )
         yield QAResult(
             answer=answer,
             citations=citations or [],

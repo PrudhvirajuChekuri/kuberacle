@@ -99,6 +99,78 @@ def test_load_rag_config_parses_expected_fields(tmp_path, monkeypatch):
     assert config.evaluation.answer_relevancy_min_parsed == 8
 
 
+def test_load_rag_config_parses_pricing_and_observability(tmp_path, monkeypatch):
+    """Pricing and observability sections map into typed objects."""
+    monkeypatch.setenv("GCP_PROJECT", "test-project")
+    monkeypatch.setenv("GCP_LOCATION", "us-central1")
+
+    config_path = tmp_path / "rag.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  embedding: gemini-embedding-001\n"
+        "  generation: gemini-2.5-flash-lite\n"
+        "vector_store:\n"
+        "  collection_name: k8s_docs_chunks_gemini\n"
+        "  persist_directory: data/vector/chroma_gemini\n"
+        "generation:\n"
+        "  temperature: 0.2\n"
+        "  max_tokens: 600\n"
+        "pricing:\n"
+        "  generation_input_per_1m_usd: 0.11\n"
+        "  generation_output_per_1m_usd: 0.41\n"
+        "  embedding_input_per_1m_usd: 0.16\n"
+        "  reranker_per_1k_queries_usd: 1.5\n"
+        "observability:\n"
+        "  service_name: kuberacle-api-test\n"
+        "  logging:\n"
+        "    level: DEBUG\n"
+        "    format: text\n"
+        "  tracing:\n"
+        "    sample_ratio: 0.25\n"
+    )
+
+    config = load_rag_config(config_path)
+
+    assert config.pricing.generation_input_per_1m_usd == 0.11
+    assert config.pricing.generation_output_per_1m_usd == 0.41
+    assert config.pricing.embedding_input_per_1m_usd == 0.16
+    assert config.pricing.reranker_per_1k_queries_usd == 1.5
+    assert config.observability.service_name == "kuberacle-api-test"
+    assert config.observability.log_level == "DEBUG"
+    assert config.observability.log_format == "text"
+    assert config.observability.trace_sample_ratio == 0.25
+
+
+def test_load_rag_config_pricing_observability_defaults(tmp_path, monkeypatch):
+    """Without pricing/observability sections, sensible defaults apply."""
+    monkeypatch.setenv("GCP_PROJECT", "test-project")
+    monkeypatch.setenv("GCP_LOCATION", "us-central1")
+
+    config_path = tmp_path / "rag.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  embedding: gemini-embedding-001\n"
+        "  generation: gemini-2.5-flash-lite\n"
+        "vector_store:\n"
+        "  collection_name: k8s_docs_chunks_gemini\n"
+        "  persist_directory: data/vector/chroma_gemini\n"
+        "generation:\n"
+        "  temperature: 0.2\n"
+        "  max_tokens: 600\n"
+    )
+
+    config = load_rag_config(config_path)
+
+    assert config.pricing.generation_input_per_1m_usd == 0.10
+    assert config.pricing.generation_output_per_1m_usd == 0.40
+    assert config.pricing.embedding_input_per_1m_usd == 0.15
+    assert config.pricing.reranker_per_1k_queries_usd == 1.00
+    assert config.observability.service_name == "kuberacle-api"
+    assert config.observability.log_level == "INFO"
+    assert config.observability.log_format == "json"
+    assert config.observability.trace_sample_ratio == 1.0
+
+
 def test_load_rag_config_gate_defaults(tmp_path, monkeypatch):
     """Without a gate section, the gate is disabled and reuses the generation model."""
     monkeypatch.setenv("GCP_PROJECT", "test-project")

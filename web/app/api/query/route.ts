@@ -46,6 +46,22 @@ async function authHeader(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${token}` };
 }
 
+/** W3C `traceparent` so the API's spans nest under one trace per request.
+ *
+ * Reuses an inbound `traceparent` when present; otherwise mints a sampled one
+ * with a random trace and span id. This links the web hop to the API trace in
+ * Cloud Trace without pulling an OpenTelemetry SDK into the frontend.
+ */
+function traceparent(request: Request): string {
+  const existing = request.headers.get("traceparent");
+  if (existing) return existing;
+  const hex = (bytes: number) =>
+    Array.from(crypto.getRandomValues(new Uint8Array(bytes)))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  return `00-${hex(16)}-${hex(8)}-01`;
+}
+
 export async function POST(request: Request): Promise<Response> {
   // Reject by declared size before buffering, so an oversized body never lands
   // in the web process's memory; fall back to a post-read length check for
@@ -76,6 +92,7 @@ export async function POST(request: Request): Promise<Response> {
         "Content-Type": "application/json",
         "X-Client-IP": clientIp(request),
         "X-Turnstile-Token": request.headers.get("x-turnstile-token") ?? "",
+        traceparent: traceparent(request),
         ...authHeaders,
       },
       body,

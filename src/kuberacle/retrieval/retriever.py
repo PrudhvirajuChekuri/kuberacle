@@ -4,6 +4,8 @@ import logging
 
 from kuberacle.domain import RetrievedChunk
 from kuberacle.interfaces import Embedder, VectorStore
+from kuberacle.observability import context as obs
+from kuberacle.observability.instrumentation import observe_stage
 from kuberacle.retrieval.bm25 import BM25Retriever
 from kuberacle.retrieval.hybrid import merge_hybrid_candidates
 from kuberacle.retrieval.reranker import DiscoveryEngineReranker
@@ -40,6 +42,9 @@ class SemanticRetriever:
         k = top_k if top_k is not None else self.top_k
         logger.debug("SemanticRetriever: top_k=%d, query=%r", k, query[:80])
         query_embedding = self.embedder.embed_text(query)
+        # Query embedding cost is tiny; estimate input tokens from query length
+        # (~4 chars/token) since the embed response carries no usage metadata.
+        obs.record_embedding_usage(max(1, len(query) // 4))
         results = self.vector_store.query(query_embedding, k)
         logger.debug("SemanticRetriever: retrieved %d chunks", len(results))
         return results
@@ -94,19 +99,27 @@ class HybridRetriever:
             Reranked chunk list.
         """
         final_k = top_k if top_k is not None else self.final_top_k
-        semantic = self.semantic_retriever.retrieve(query, top_k=self.semantic_top_k)
-        lexical = self.bm25_retriever.retrieve(query, top_k=self.lexical_top_k)
-        merged = merge_hybrid_candidates(
-            semantic_chunks=semantic,
-            lexical_chunks=lexical,
-            semantic_weight=self.semantic_weight,
-            lexical_weight=self.lexical_weight,
-            top_k=self.merged_top_k,
-        )
+        with observe_stage("semantic", as_type="retriever"):
+            semantic = self.semantic_retriever.retrieve(
+                query, top_k=self.semantic_top_k
+            )
+        with observe_stage("bm25", as_type="retriever"):
+            lexical = self.bm25_retriever.retrieve(query, top_k=self.lexical_top_k)
+        with observe_stage("merge", as_type="span"):
+            merged = merge_hybrid_candidates(
+                semantic_chunks=semantic,
+                lexical_chunks=lexical,
+                semantic_weight=self.semantic_weight,
+                lexical_weight=self.lexical_weight,
+                top_k=self.merged_top_k,
+            )
         logger.debug(
             "HybridRetriever: semantic=%d, lexical=%d, merged=%d, reranking to top_%d",
             len(semantic), len(lexical), len(merged), min(final_k, len(merged)),
         )
-        results = self.reranker.rerank(query, merged, top_k=min(final_k, len(merged)))
+        with observe_stage("rerank", as_type="span"):
+            results = self.reranker.rerank(
+                query, merged, top_k=min(final_k, len(merged))
+            )
         logger.debug("HybridRetriever: final %d chunks after rerank", len(results))
         return results

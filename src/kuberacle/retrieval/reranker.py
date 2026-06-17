@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from kuberacle.domain import RetrievedChunk
+from kuberacle.observability import context as obs
 from kuberacle.retrieval.constants import DISCOVERY_ENGINE_RANK_URL
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,8 @@ class DiscoveryEngineReranker:
             )
             response.raise_for_status()
             results = response.json().get("records", [])
+            # A successful rank call is one billable ranking query.
+            obs.record_rerank()
         except Exception as exc:
             logger.warning("Reranker API call failed: %s; falling back to hybrid scores", exc)
             return chunks[:top_k]

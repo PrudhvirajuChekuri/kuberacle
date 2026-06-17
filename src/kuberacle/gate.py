@@ -4,7 +4,9 @@ import logging
 from enum import Enum
 from typing import Any
 
-from kuberacle.vertex import make_vertex_client
+from kuberacle.observability import context as obs
+from kuberacle.observability.instrumentation import link_prompt
+from kuberacle.vertex import extract_token_usage, make_vertex_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ class VertexAIRelevanceGate:
         gcp_location: GCP region.
         prompt_bundle: Gate prompt strings with keys ``system`` and ``user``;
             the ``user`` template must contain a ``{question}`` placeholder.
+        prompt_ref: Optional managed prompt object to link in traces.
         genai_client: Optional injected Gen AI client for testing.
     """
 
@@ -41,12 +44,14 @@ class VertexAIRelevanceGate:
         gcp_project: str,
         gcp_location: str,
         prompt_bundle: dict[str, str],
+        prompt_ref: Any = None,
         genai_client: Any = None,
     ) -> None:
         self.model_id = model_id
         self.gcp_project = gcp_project
         self.gcp_location = gcp_location
         self.prompt_bundle = prompt_bundle
+        self.prompt_ref = prompt_ref
         self._client = genai_client
 
     @property
@@ -69,6 +74,7 @@ class VertexAIRelevanceGate:
         """
         from google.genai import types
 
+        link_prompt(self.prompt_ref)
         user_prompt = self.prompt_bundle["user"].format(question=question)
         try:
             response = self.client.models.generate_content(
@@ -94,6 +100,9 @@ class VertexAIRelevanceGate:
             )
             return True
 
+        obs.record_model_usage(
+            "gate", *extract_token_usage(getattr(response, "usage_metadata", None))
+        )
         label = (response.text or "").strip().upper()
         if label == ScopeLabel.OUT_OF_SCOPE.value:
             logger.info("Relevance gate: out of scope: %r", question[:100])
