@@ -1,35 +1,71 @@
 #!/usr/bin/env bash
 # Create log-based metrics derived from the request_summary event.
-# Requires: PROJECT env var. Idempotent-ish: re-running errors on existing
-# metrics; delete first with `gcloud logging metrics delete <name>` to recreate.
+# Requires: PROJECT env var. Re-running errors on existing metrics; delete first
+# with `gcloud logging metrics delete <name>` to recreate.
+#
+# Complex log metrics (labels, distributions, value extractors) are defined via
+# --config-from-file, which is stable across gcloud versions; the equivalent
+# flags are not available on the GA `gcloud logging metrics create`.
 set -euo pipefail
 
 : "${PROJECT:?set PROJECT}"
 
 BASE_FILTER='resource.type="cloud_run_revision" jsonPayload.event="request_summary"'
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
-# Request count, labelled by outcome and cold_start (for RED + abstention rates).
-gcloud logging metrics create kuberacle_requests \
-  --project "$PROJECT" \
-  --description="Kuberacle requests by outcome" \
-  --log-filter="$BASE_FILTER" \
-  --label-extractors='outcome=EXTRACT(jsonPayload.outcome),cold_start=EXTRACT(jsonPayload.cold_start)' \
-  --metric-descriptor='{"metricKind":"DELTA","valueType":"INT64","labels":[{"key":"outcome"},{"key":"cold_start"}]}'
+# Request count, labelled by outcome and cold_start (RED + abstention rates).
+cat > "$TMP/requests.yaml" <<YAML
+description: "Kuberacle requests by outcome"
+filter: '${BASE_FILTER}'
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  labels:
+  - key: outcome
+  - key: cold_start
+labelExtractors:
+  outcome: EXTRACT(jsonPayload.outcome)
+  cold_start: EXTRACT(jsonPayload.cold_start)
+YAML
 
 # Request latency distribution (ms) for p50/p95.
-gcloud logging metrics create kuberacle_request_latency_ms \
-  --project "$PROJECT" \
-  --description="Kuberacle request duration (ms)" \
-  --log-filter="$BASE_FILTER" \
-  --value-extractor='EXTRACT(jsonPayload.duration_ms)' \
-  --metric-descriptor='{"metricKind":"DELTA","valueType":"DISTRIBUTION","unit":"ms"}'
+cat > "$TMP/latency.yaml" <<YAML
+description: "Kuberacle request duration (ms)"
+filter: '${BASE_FILTER}'
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: ms
+valueExtractor: EXTRACT(jsonPayload.duration_ms)
+bucketOptions:
+  exponentialBuckets:
+    numFiniteBuckets: 64
+    growthFactor: 1.4
+    scale: 1
+YAML
 
 # Estimated cost per request (USD), summed for the daily-cost alert.
+cat > "$TMP/cost.yaml" <<YAML
+description: "Kuberacle estimated cost per request (USD)"
+filter: '${BASE_FILTER}'
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: "1"
+valueExtractor: EXTRACT(jsonPayload.cost_usd.total)
+bucketOptions:
+  exponentialBuckets:
+    numFiniteBuckets: 64
+    growthFactor: 1.4
+    scale: 0.0001
+YAML
+
+gcloud logging metrics create kuberacle_requests \
+  --project "$PROJECT" --config-from-file="$TMP/requests.yaml"
+gcloud logging metrics create kuberacle_request_latency_ms \
+  --project "$PROJECT" --config-from-file="$TMP/latency.yaml"
 gcloud logging metrics create kuberacle_request_cost_usd \
-  --project "$PROJECT" \
-  --description="Kuberacle estimated cost per request (USD)" \
-  --log-filter="$BASE_FILTER" \
-  --value-extractor='EXTRACT(jsonPayload.cost_usd.total)' \
-  --metric-descriptor='{"metricKind":"DELTA","valueType":"DISTRIBUTION","unit":"USD"}'
+  --project "$PROJECT" --config-from-file="$TMP/cost.yaml"
 
 echo "Created log-based metrics: kuberacle_requests, kuberacle_request_latency_ms, kuberacle_request_cost_usd"
