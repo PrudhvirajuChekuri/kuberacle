@@ -43,12 +43,41 @@ def _root_trace_context() -> dict | None:
     return trace_context
 
 
+def capture_http_trace_context() -> None:
+    """Record the inbound HTTP span's trace context on the active metrics.
+
+    Must be called from the request coroutine, where the FastAPI server span is
+    the current OpenTelemetry context. The streaming response body is iterated in
+    a detached threadpool context copy per chunk, so reading the current span
+    later (in :func:`start_request_root`, which runs inside the stream) would not
+    see the HTTP span. Capturing it here and stashing it on the metrics lets the
+    per-request root reuse the HTTP trace id, keeping the Cloud Trace HTTP span
+    and the pipeline trace unified. No-op without metrics or a valid span.
+    """
+    metrics = ctx.get_metrics()
+    if metrics is None:
+        return
+    try:
+        from opentelemetry import trace
+
+        span_ctx = trace.get_current_span().get_span_context()
+        if span_ctx.is_valid:
+            metrics.http_trace_id = format(span_ctx.trace_id, "032x")
+            metrics.http_span_id = format(span_ctx.span_id, "016x")
+    except Exception:
+        logger.debug("Capturing HTTP trace context failed", exc_info=True)
+
+
 def start_request_root(name: str, user_input: Any = None) -> Any:
     """Open the single root observation that all stages of a request nest under.
 
     Creates one Langfuse trace per request and records its id and span id in the
     active metrics so the top-level stages (gate, retrieval, generation) attach
     to it via :func:`_root_trace_context`. Returns None when tracing is off.
+
+    Reuses the inbound HTTP trace id captured by
+    :func:`capture_http_trace_context` (so the Langfuse trace and the Cloud Trace
+    HTTP span stay unified); mints a fresh trace only when none was captured.
 
     Args:
         name: Root observation name (e.g. ``query``).
@@ -62,18 +91,11 @@ def start_request_root(name: str, user_input: Any = None) -> Any:
     if client is None or metrics is None:
         return None
     try:
-        from opentelemetry import trace
-
-        # Reuse the request's OTel trace (FastAPI span / propagated web
-        # traceparent) when it is in context, so the Langfuse trace and the
-        # Cloud Trace HTTP span stay unified; otherwise mint a fresh trace.
-        span_ctx = trace.get_current_span().get_span_context()
-        if span_ctx.is_valid:
-            trace_id = format(span_ctx.trace_id, "032x")
-            trace_context = {
-                "trace_id": trace_id,
-                "parent_span_id": format(span_ctx.span_id, "016x"),
-            }
+        if metrics.http_trace_id is not None:
+            trace_id = metrics.http_trace_id
+            trace_context = {"trace_id": trace_id}
+            if metrics.http_span_id is not None:
+                trace_context["parent_span_id"] = metrics.http_span_id
         else:
             trace_id = client.create_trace_id()
             trace_context = {"trace_id": trace_id}

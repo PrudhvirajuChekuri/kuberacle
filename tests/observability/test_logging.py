@@ -3,7 +3,8 @@
 import json
 import logging
 
-from kuberacle.config import ObservabilityConfig
+from kuberacle.config import ObservabilityConfig, PricingConfig
+from kuberacle.observability import context as ctx
 from kuberacle.observability.logging import configure_logging
 
 
@@ -50,6 +51,37 @@ def test_text_format_is_plain(capsys):
     out = capsys.readouterr().out.strip()
     assert "hello" in out
     assert not out.startswith("{")
+
+
+def test_trace_correlation_falls_back_to_metrics(capsys):
+    """A log line with no current span correlates via the captured HTTP trace id.
+
+    This is the request-summary case: it is emitted from the streaming threadpool
+    context where the FastAPI span is not current, so the formatter must fall back
+    to the trace id captured on the request metrics.
+    """
+    configure_logging(_json_config(), gcp_project="proj-x")
+    metrics = ctx.RequestMetrics(pricing=PricingConfig(0.10, 0.40, 0.15, 1.00))
+    metrics.http_trace_id = "0123456789abcdef0123456789abcdef"
+    metrics.http_span_id = "fedcba9876543210"
+    token = ctx.set_metrics(metrics)
+    try:
+        logging.getLogger("kuberacle.test").info("request_summary")
+    finally:
+        ctx.reset_metrics(token)
+    record = json.loads(capsys.readouterr().out.strip())
+    assert record["logging.googleapis.com/trace"] == (
+        "projects/proj-x/traces/0123456789abcdef0123456789abcdef"
+    )
+    assert record["logging.googleapis.com/spanId"] == "fedcba9876543210"
+
+
+def test_no_trace_fields_without_span_or_metrics(capsys):
+    """With neither a current span nor metrics, no trace fields are emitted."""
+    configure_logging(_json_config(), gcp_project="proj-x")
+    logging.getLogger("kuberacle.test").info("startup")
+    record = json.loads(capsys.readouterr().out.strip())
+    assert "logging.googleapis.com/trace" not in record
 
 
 def test_configure_logging_is_idempotent(capsys):

@@ -52,6 +52,12 @@ class RequestMetrics:
         trace_id: Langfuse/OTel trace id for this request, when tracing is on.
         root_span_id: Span id of the per-request root observation, used to nest
             the top-level pipeline stages under a single trace.
+        http_trace_id: Trace id of the inbound HTTP (FastAPI) span, captured in
+            the request coroutine. Reused as the per-request trace id so the
+            HTTP span and the pipeline trace stay unified, and as a fallback for
+            log trace-correlation from the streaming threadpool context.
+        http_span_id: Span id of the inbound HTTP span, used as the parent of
+            the per-request root observation.
     """
 
     pricing: PricingConfig
@@ -69,6 +75,8 @@ class RequestMetrics:
     rerank_queries: int = 0
     trace_id: str | None = None
     root_span_id: str | None = None
+    http_trace_id: str | None = None
+    http_span_id: str | None = None
 
     def total_cost_usd(self) -> float:
         """Return the summed estimated cost across all stages."""

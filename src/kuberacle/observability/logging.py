@@ -24,31 +24,61 @@ _RESERVED = set(
 
 
 def _trace_fields(gcp_project: str) -> dict:
-    """Return Cloud Logging trace-correlation fields for the active span.
+    """Return Cloud Logging trace-correlation fields for the active request.
+
+    Prefers the current OpenTelemetry span; when none is in context (e.g. the
+    request-summary line emitted from the streaming threadpool copy), falls back
+    to the inbound HTTP trace id captured on the request metrics, so those lines
+    still correlate to their trace.
 
     Args:
         gcp_project: GCP project id used to qualify the trace resource name.
 
     Returns:
         A dict with ``logging.googleapis.com/trace`` and ``.../spanId`` when a
-        valid span is in context, otherwise empty.
+        trace context is available, otherwise empty.
     """
     try:
         from opentelemetry import trace
 
         span = trace.get_current_span()
         ctx = span.get_span_context()
-        if not ctx.is_valid:
-            return {}
-        fields = {"logging.googleapis.com/spanId": format(ctx.span_id, "016x")}
-        if gcp_project:
-            trace_hex = format(ctx.trace_id, "032x")
-            fields["logging.googleapis.com/trace"] = (
-                f"projects/{gcp_project}/traces/{trace_hex}"
-            )
-        return fields
+        if ctx.is_valid:
+            fields = {"logging.googleapis.com/spanId": format(ctx.span_id, "016x")}
+            if gcp_project:
+                trace_hex = format(ctx.trace_id, "032x")
+                fields["logging.googleapis.com/trace"] = (
+                    f"projects/{gcp_project}/traces/{trace_hex}"
+                )
+            return fields
+        return _trace_fields_from_metrics(gcp_project)
     except Exception:
         return {}
+
+
+def _trace_fields_from_metrics(gcp_project: str) -> dict:
+    """Build trace-correlation fields from the active request metrics, if any.
+
+    Args:
+        gcp_project: GCP project id used to qualify the trace resource name.
+
+    Returns:
+        A dict with the trace (and span) resource fields when a captured HTTP
+        trace id is available, otherwise empty.
+    """
+    from kuberacle.observability.context import get_metrics
+
+    metrics = get_metrics()
+    if metrics is None or metrics.http_trace_id is None:
+        return {}
+    fields = {}
+    if metrics.http_span_id is not None:
+        fields["logging.googleapis.com/spanId"] = metrics.http_span_id
+    if gcp_project:
+        fields["logging.googleapis.com/trace"] = (
+            f"projects/{gcp_project}/traces/{metrics.http_trace_id}"
+        )
+    return fields
 
 
 class _JsonFormatter(logging.Formatter):

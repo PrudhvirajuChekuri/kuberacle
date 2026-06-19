@@ -37,6 +37,7 @@ from kuberacle.factory import build_qa_system
 from kuberacle.observability import context as obs
 from kuberacle.observability.events import emit_request_summary
 from kuberacle.observability.instrumentation import (
+    capture_http_trace_context,
     finalize_request_root,
     start_request_root,
 )
@@ -232,6 +233,10 @@ def create_app() -> FastAPI:
         )
         if metrics is not None:
             obs.set_metrics(metrics)
+            # Capture the FastAPI server span here, in the request coroutine,
+            # where it is the current OTel context; the streaming body below runs
+            # in detached threadpool context copies that no longer see it.
+            capture_http_trace_context()
 
         def event_stream() -> Iterator[str]:
             # One root observation per request so the pipeline stages nest under

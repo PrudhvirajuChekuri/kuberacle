@@ -30,3 +30,79 @@ def test_enrich_llm_observation_no_op_without_metrics():
     """Enrichment without an active context does nothing and does not raise."""
     instr.enrich_llm_observation(instr._NoopObservation(), "generation", output="x")
     assert ctx.get_metrics() is None
+
+
+def test_capture_http_trace_context_no_op_without_metrics():
+    """Capturing trace context is safe with no active request metrics."""
+    instr.capture_http_trace_context()  # must not raise
+    assert ctx.get_metrics() is None
+
+
+def test_capture_http_trace_context_no_span_leaves_ids_unset():
+    """With no current OTel span, capture leaves the HTTP trace ids unset."""
+    metrics = ctx.RequestMetrics(pricing=PRICING)
+    token = ctx.set_metrics(metrics)
+    try:
+        instr.capture_http_trace_context()
+        assert metrics.http_trace_id is None
+        assert metrics.http_span_id is None
+    finally:
+        ctx.reset_metrics(token)
+
+
+class _FakeObservation:
+    def __init__(self, trace_context):
+        self.id = "root-span-id"
+        self.trace_context = trace_context
+
+    def update(self, **kwargs):
+        pass
+
+    def end(self):
+        pass
+
+
+class _FakeLangfuse:
+    def __init__(self):
+        self.last_trace_context = None
+
+    def create_trace_id(self):
+        return "minted-trace-id"
+
+    def start_observation(self, *, name, as_type, input, trace_context):
+        self.last_trace_context = trace_context
+        return _FakeObservation(trace_context)
+
+
+def test_start_request_root_reuses_captured_http_trace(monkeypatch):
+    """The per-request root reuses the captured HTTP trace id and span as parent."""
+    fake = _FakeLangfuse()
+    monkeypatch.setattr(instr, "get_langfuse", lambda: fake)
+    metrics = ctx.RequestMetrics(pricing=PRICING)
+    metrics.http_trace_id = "http-trace-id"
+    metrics.http_span_id = "http-span-id"
+    token = ctx.set_metrics(metrics)
+    try:
+        instr.start_request_root("query", user_input="q")
+    finally:
+        ctx.reset_metrics(token)
+    assert fake.last_trace_context == {
+        "trace_id": "http-trace-id",
+        "parent_span_id": "http-span-id",
+    }
+    assert metrics.trace_id == "http-trace-id"
+    assert metrics.root_span_id == "root-span-id"
+
+
+def test_start_request_root_mints_trace_when_no_http_context(monkeypatch):
+    """Without a captured HTTP trace, the root mints a fresh trace id."""
+    fake = _FakeLangfuse()
+    monkeypatch.setattr(instr, "get_langfuse", lambda: fake)
+    metrics = ctx.RequestMetrics(pricing=PRICING)
+    token = ctx.set_metrics(metrics)
+    try:
+        instr.start_request_root("query")
+    finally:
+        ctx.reset_metrics(token)
+    assert fake.last_trace_context == {"trace_id": "minted-trace-id"}
+    assert metrics.trace_id == "minted-trace-id"
