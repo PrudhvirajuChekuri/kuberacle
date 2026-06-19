@@ -111,6 +111,88 @@ def test_no_summary_without_pricing(caplog):
     assert _summaries(caplog) == []
 
 
+def test_traceparent_visible_to_handler_under_fastapi_instrumentation():
+    """FastAPIInstrumentor must not hide the inbound traceparent from handlers.
+
+    This is the prod-specific link: the live API runs with FastAPIInstrumentor
+    active. The fix reads ``request.headers.get("traceparent")`` in the handler,
+    so prove the instrumentation (which parses that header for its own span)
+    leaves it readable by the route.
+    """
+    from fastapi import FastAPI, Request
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    app = FastAPI()
+
+    @app.get("/h")
+    async def handler(request: Request):
+        return {"tp": request.headers.get("traceparent")}
+
+    FastAPIInstrumentor.instrument_app(app)
+    try:
+        tp = "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01"
+        resp = TestClient(app).get("/h", headers={"traceparent": tp})
+        assert resp.json()["tp"] == tp
+    finally:
+        FastAPIInstrumentor.uninstrument_app(app)
+
+
+class _FakeRoot:
+    id = "root-span"
+
+    def update(self, **kwargs):
+        pass
+
+    def end(self):
+        pass
+
+
+class _FakeLangfuse:
+    """Records the trace_context the per-request root observation is opened with."""
+
+    def __init__(self):
+        self.root_trace_context = None
+
+    def create_trace_id(self):
+        return "minted-trace-id"
+
+    def start_observation(self, *, name, as_type, input, trace_context):
+        if name == "query":
+            self.root_trace_context = trace_context
+        return _FakeRoot()
+
+    def flush(self):
+        pass
+
+
+def test_traceparent_header_unifies_request_trace(monkeypatch):
+    """End-to-end: the inbound traceparent becomes the pipeline root's trace id.
+
+    Drives the real app via TestClient with a Langfuse client wired in, and
+    asserts the per-request root observation is opened on the header's trace id
+    (and parented to its span) rather than a freshly minted trace.
+    """
+    from kuberacle.observability import tracing
+
+    fake = _FakeLangfuse()
+    monkeypatch.setattr(tracing, "_HANDLES", tracing.TracingHandles(langfuse=fake))
+
+    events = [AnswerDelta("Pods run."), QAResult("Pods run.", [], [])]
+    trace_id = "0123456789abcdef0123456789abcdef"
+    span_id = "fedcba9876543210"
+    resp = _client(events).post(
+        "/query",
+        json={"question": "q"},
+        headers={"traceparent": f"00-{trace_id}-{span_id}-01"},
+    )
+
+    assert resp.status_code == 200
+    assert fake.root_trace_context == {
+        "trace_id": trace_id,
+        "parent_span_id": span_id,
+    }
+
+
 def test_summary_on_guardrail_rejection(caplog):
     """A rejected request emits a summary with the guardrail outcome and status."""
     guardrails = FakeGuardrails(

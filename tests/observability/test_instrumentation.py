@@ -39,7 +39,7 @@ def test_capture_http_trace_context_no_op_without_metrics():
 
 
 def test_capture_http_trace_context_no_span_leaves_ids_unset():
-    """With no current OTel span, capture leaves the HTTP trace ids unset."""
+    """With no traceparent and no current OTel span, the HTTP ids stay unset."""
     metrics = ctx.RequestMetrics(pricing=PRICING)
     token = ctx.set_metrics(metrics)
     try:
@@ -48,6 +48,44 @@ def test_capture_http_trace_context_no_span_leaves_ids_unset():
         assert metrics.http_span_id is None
     finally:
         ctx.reset_metrics(token)
+
+
+def test_capture_http_trace_context_parses_traceparent():
+    """A valid inbound traceparent populates the HTTP trace and span ids."""
+    metrics = ctx.RequestMetrics(pricing=PRICING)
+    token = ctx.set_metrics(metrics)
+    try:
+        instr.capture_http_trace_context(
+            "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01"
+        )
+        assert metrics.http_trace_id == "0123456789abcdef0123456789abcdef"
+        assert metrics.http_span_id == "fedcba9876543210"
+    finally:
+        ctx.reset_metrics(token)
+
+
+def test_capture_http_trace_context_ignores_malformed_traceparent():
+    """A malformed traceparent is ignored and leaves the ids unset."""
+    metrics = ctx.RequestMetrics(pricing=PRICING)
+    token = ctx.set_metrics(metrics)
+    try:
+        instr.capture_http_trace_context("not-a-valid-traceparent")
+        assert metrics.http_trace_id is None
+    finally:
+        ctx.reset_metrics(token)
+
+
+def test_parse_traceparent_rejects_invalid():
+    """The traceparent parser rejects absent, malformed, and all-zero ids."""
+    assert instr._parse_traceparent(None) is None
+    assert instr._parse_traceparent("") is None
+    assert instr._parse_traceparent("00-tooshort-tooshort-01") is None
+    assert (
+        instr._parse_traceparent(f"00-{'0' * 32}-{'0' * 16}-01") is None
+    )
+    assert instr._parse_traceparent(
+        "00-0123456789abcdef0123456789abcdef-fedcba9876543210-01"
+    ) == ("0123456789abcdef0123456789abcdef", "fedcba9876543210")
 
 
 class _FakeObservation:

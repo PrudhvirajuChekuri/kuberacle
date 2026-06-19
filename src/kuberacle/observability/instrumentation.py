@@ -43,19 +43,49 @@ def _root_trace_context() -> dict | None:
     return trace_context
 
 
-def capture_http_trace_context() -> None:
-    """Record the inbound HTTP span's trace context on the active metrics.
+def _parse_traceparent(traceparent: str | None) -> tuple[str, str] | None:
+    """Parse a W3C ``traceparent`` header into its trace id and span id.
 
-    Must be called from the request coroutine, where the FastAPI server span is
-    the current OpenTelemetry context. The streaming response body is iterated in
-    a detached threadpool context copy per chunk, so reading the current span
-    later (in :func:`start_request_root`, which runs inside the stream) would not
-    see the HTTP span. Capturing it here and stashing it on the metrics lets the
-    per-request root reuse the HTTP trace id, keeping the Cloud Trace HTTP span
-    and the pipeline trace unified. No-op without metrics or a valid span.
+    Args:
+        traceparent: Header value of the form ``version-traceid-spanid-flags``.
+
+    Returns:
+        A ``(trace_id, span_id)`` hex tuple, or None when absent or malformed
+        (including the all-zero invalid ids).
+    """
+    if not traceparent:
+        return None
+    parts = traceparent.split("-")
+    if len(parts) != 4:
+        return None
+    trace_id, span_id = parts[1], parts[2]
+    if len(trace_id) != 32 or len(span_id) != 16:
+        return None
+    if trace_id == "0" * 32 or span_id == "0" * 16:
+        return None
+    return trace_id, span_id
+
+
+def capture_http_trace_context(traceparent: str | None = None) -> None:
+    """Record the inbound request's trace context on the active metrics.
+
+    The per-request root reuses this trace id so the Cloud Trace HTTP span and
+    the pipeline trace stay unified, and the log formatter uses it to correlate
+    the request-summary line (emitted from the streaming threadpool copy). The
+    FastAPI server-span context is not propagated into the route coroutine here,
+    so the inbound W3C ``traceparent`` header (sent by the web proxy) is the
+    primary source; the current OTel span is a fallback for direct callers that
+    set one. No-op without metrics or any trace context.
+
+    Args:
+        traceparent: The inbound ``traceparent`` header value, when present.
     """
     metrics = ctx.get_metrics()
     if metrics is None:
+        return
+    parsed = _parse_traceparent(traceparent)
+    if parsed is not None:
+        metrics.http_trace_id, metrics.http_span_id = parsed
         return
     try:
         from opentelemetry import trace

@@ -233,10 +233,11 @@ def create_app() -> FastAPI:
         )
         if metrics is not None:
             obs.set_metrics(metrics)
-            # Capture the FastAPI server span here, in the request coroutine,
-            # where it is the current OTel context; the streaming body below runs
-            # in detached threadpool context copies that no longer see it.
-            capture_http_trace_context()
+            # Reuse the inbound trace (the web proxy sends a W3C traceparent) so
+            # the pipeline trace and the Cloud Trace HTTP span share one id. Read
+            # the header here, in the request coroutine; the streaming body below
+            # runs in detached threadpool copies with no request context.
+            capture_http_trace_context(request.headers.get("traceparent"))
 
         def event_stream() -> Iterator[str]:
             # One root observation per request so the pipeline stages nest under
