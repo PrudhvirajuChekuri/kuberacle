@@ -78,14 +78,7 @@
             "dataSets": [
               {
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_request_cost_usd\" resource.type=\"cloud_run_revision\"",
-                    "aggregation": {
-                      "alignmentPeriod": "86400s",
-                      "perSeriesAligner": "ALIGN_SUM",
-                      "crossSeriesReducer": "REDUCE_SUM"
-                    }
-                  }
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/kuberacle_request_cost_usd' | align delta(1d) | every 1d | group_by [], [total: sum(value.kuberacle_request_cost_usd)]"
                 },
                 "plotType": "LINE"
               }
