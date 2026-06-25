@@ -25,16 +25,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # Authenticate after install so cloud credentials are not present in the
+      # environment during dependency build/install.
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
 
       - name: Pull vector index from GCS
         run: |
@@ -57,57 +59,7 @@ jobs:
           path: artifacts/evals/
 
   quality-gate-full:
+    # Manual full rebuild + eval-gated publish, sharing the scheduled path.
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-
-      - name: Prepare full corpus
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python -m kuberacle download-data --config configs/datasets/full.yaml
-          python -m kuberacle preprocess --config configs/datasets/full.yaml
-
-      - name: Build vector index
-        run: python -m kuberacle ingest
-
-      - name: Run full evaluation gate
-        run: |
-          python -m kuberacle evaluate \
-            --json-out artifacts/evals/ci-full-eval.json \
-            --md-out artifacts/evals/ci-full-eval.md
-
-      - name: Push vector index to GCS
-        if: success()
-        run: |
-          python -m kuberacle push-index \
-            --bucket ${{ secrets.GCS_INDEX_BUCKET }}
-
-      - name: Upload full evaluation artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rag-eval-artifacts-full
-          path: artifacts/evals/
+    uses: ./.github/workflows/reusable-index-build.yml
+    secrets: inherit

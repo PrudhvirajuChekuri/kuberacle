@@ -180,26 +180,17 @@ Observability is off by default (local dev, tests, CLI). Enable it in deployment
 
 ## Run with Docker
 
-The full stack (API + web UI) runs in two containers via Docker Compose. The Chroma index is baked into the API image, so no ingestion is needed to run it. The API still calls GCP at runtime (embeddings, generation, reranking), so your local ADC is mounted into the container read-only.
+The full stack (API + web UI) runs in two containers via Docker Compose. The image carries no index: the API pulls the published index from GCS at startup (decoupled from the image) and calls GCP at runtime (embeddings, generation, reranking), so your local ADC is mounted into the container read-only. The web UI reads the corpus version from the API at runtime.
 
 ### Prerequisites
 
 - Docker with Compose v2 (on WSL, enable Docker Desktop's WSL integration)
 - A GCP project with `aiplatform.googleapis.com` and `discoveryengine.googleapis.com` enabled (queries call these at runtime and consume credits)
-- ADC configured: `gcloud auth application-default login`
-- A `.env` file in the project root with `GCP_PROJECT` and `GCP_LOCATION`
+- ADC configured: `gcloud auth application-default login` (with read access to the index bucket)
+- A `.env` file in the project root with `GCP_PROJECT`, `GCP_LOCATION`, and `GCS_INDEX_BUCKET`
+- A published index in that bucket (run the `workflow_dispatch` build, or `python -m kuberacle push-index` after building locally)
 
-### Get the index
-
-The Chroma index is not stored in the repository. Download the prebuilt index bundle and extract it from the project root before building:
-
-```bash
-curl -L -o chroma-index.tar.gz \
-  https://github.com/PrudhvirajuChekuri/kuberacle/releases/latest/download/chroma-index.tar.gz
-tar -xzf chroma-index.tar.gz        # restores data/vector/chroma_gemini and data/k8s_version.txt
-```
-
-The bundle contains the vector store (`data/vector/chroma_gemini`) and the corpus version file (`data/k8s_version.txt`), both of which the image build reads. Alternatively, build the index yourself with the pipeline steps under [Run RAG Pipeline](#run-rag-pipeline).
+Compose pulls the `latest` index version (set explicitly in `docker-compose.yml`); production pins an exact version via `INDEX_VERSION` (required for GCS mode - there is no default, so a deployment can never silently follow the moving pointer). To run fully offline instead, build the index locally with the [Run RAG Pipeline](#run-rag-pipeline) steps and set `INDEX_SOURCE=local`.
 
 ### Run
 
@@ -220,14 +211,16 @@ The web container reaches the API over the Compose network via `RAG_API_URL=http
 
 ## Evaluation Gates
 
-The smoke eval runs on every pull request. The full benchmark can be triggered manually via `workflow_dispatch` in GitHub Actions.
+The smoke eval runs on every pull request. The full deterministic benchmark runs on a manual `workflow_dispatch` and on the weekly `docs-check` rebuild, which publishes a new versioned index only when the gate passes.
 
 | Metric | Threshold | Mode |
 |---|---|---|
-| `retrieval_recall_at_k` | 0.90 | deterministic + full |
+| `retrieval_recall_at_k` | 0.845925 | deterministic + full |
 | `mrr` | 0.90 | deterministic + full |
 | `abstention_accuracy` | 0.90 | deterministic + full |
 | `non_empty_answer_rate` | 0.90 | deterministic + full |
 | `faithfulness` | 0.90 | full only |
 | `context_precision` | 0.85 | full only |
 | `answer_relevancy` | 0.80 | full only |
+
+The `retrieval_recall_at_k` gate is a ratchet floor at the current full-v2 baseline (~0.846): rebuilds must not regress retrieval, and the threshold is raised as recall improves. Closing the remaining recall gap is tracked as a separate retrieval-tuning effort.

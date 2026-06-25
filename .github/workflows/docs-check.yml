@@ -1,0 +1,103 @@
+name: docs-check
+
+# Weekly freshness pipeline. Detect whether the published index is stale versus
+# upstream Kubernetes docs or the local index-build code; if so, rebuild it,
+# gate it on the deterministic eval, publish a new versioned artifact to GCS, and
+# open an issue to roll it. Notify-only: it never mutates production. Rolling the
+# new version into Cloud Run (INDEX_VERSION) stays a deliberate human step.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+env:
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+  GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      reason: ${{ steps.check.outputs.reason }}
+      upstream_commit: ${{ steps.check.outputs.upstream_commit }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      # Authenticate after install so cloud credentials are not present in the
+      # environment during dependency build/install.
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Check index staleness
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m kuberacle docs-check --bucket ${{ secrets.GCS_INDEX_BUCKET }}
+
+  rebuild:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    # Eval-gated rebuild + versioned publish. Publishes to GCS only; does not
+    # touch production.
+    uses: ./.github/workflows/reusable-index-build.yml
+    secrets: inherit
+
+  notify:
+    needs: [check, rebuild]
+    if: needs.check.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Open index-roll issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REASON: ${{ needs.check.outputs.reason }}
+          COMMIT: ${{ needs.check.outputs.upstream_commit }}
+          VERSION: ${{ needs.rebuild.outputs.index_version }}
+        run: |
+          gh label create index-roll \
+            --color BFD4F2 --description "Validated index ready to roll" --force
+          gh issue create \
+            --title "New validated index published: ${VERSION}" \
+            --label index-roll \
+            --body "A new index version passed the deterministic eval gate and was published to GCS.
+
+          - Version: \`${VERSION}\`
+          - Reason: ${REASON}
+          - Upstream commit: ${COMMIT}
+
+          Roll it into production by pinning the new version (validated, not yet live):
+
+          \`\`\`
+          gcloud run services update k8s-rag-api --region us-central1 \\
+            --project \$GCP_PROJECT --update-env-vars INDEX_VERSION=${VERSION}
+          \`\`\`
+
+          Rollback is the same command with the previous version."
