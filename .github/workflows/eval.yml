@@ -61,5 +61,10 @@ jobs:
   quality-gate-full:
     # Manual full rebuild + eval-gated publish, sharing the scheduled path.
     if: github.event_name == 'workflow_dispatch'
+    # A reusable workflow can only use permissions the caller grants; the build
+    # job needs id-token: write for WIF, so grant it here.
+    permissions:
+      id-token: write
+      contents: read
     uses: ./.github/workflows/reusable-index-build.yml
     secrets: inherit
