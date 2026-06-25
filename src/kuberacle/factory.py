@@ -18,7 +18,9 @@ from kuberacle.retrieval.reranker import DiscoveryEngineReranker
 from kuberacle.retrieval.retriever import HybridRetriever, SemanticRetriever
 
 
-def build_qa_system(config: RAGConfig, project_root: Path) -> RAGQASystem:
+def build_qa_system(
+    config: RAGConfig, project_root: Path, index_dir: Path | None = None
+) -> RAGQASystem:
     """Wire the full hybrid retrieval + generation pipeline from config.
 
     Builds the embedder, vector store, semantic and BM25 retrievers, reranker,
@@ -29,8 +31,11 @@ def build_qa_system(config: RAGConfig, project_root: Path) -> RAGQASystem:
 
     Args:
         config: Runtime RAG configuration.
-        project_root: Project root used to resolve the on-disk vector store
-            persist directory and the prompt directory.
+        project_root: Project root used to resolve the prompt directory and the
+            default on-disk vector store location.
+        index_dir: Absolute Chroma persist directory to serve from. When given
+            (for example a version pulled from GCS at startup), it overrides the
+            config-relative ``vector_store.persist_directory``.
 
     Returns:
         A configured ``RAGQASystem``.
@@ -41,9 +46,14 @@ def build_qa_system(config: RAGConfig, project_root: Path) -> RAGQASystem:
         gcp_location=config.gcp_location,
         output_dimensionality=config.embedding.output_dimensionality,
     )
+    persist_directory = (
+        str(index_dir)
+        if index_dir is not None
+        else str(project_root / config.vector_store.persist_directory)
+    )
     vector_store = ChromaVectorStore(
         collection_name=config.vector_store.collection_name,
-        persist_directory=str(project_root / config.vector_store.persist_directory),
+        persist_directory=persist_directory,
     )
     semantic = SemanticRetriever(
         embedder=embedder,

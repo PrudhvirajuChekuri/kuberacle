@@ -1,6 +1,8 @@
 # Backend image for the kuberacle FastAPI service.
 # Multi-stage: install dependencies into a venv, then copy into a slim runtime.
-# The Chroma index is baked in; GCP credentials are provided at runtime, never here.
+# The Chroma index is NOT baked in: at startup the API pulls a pinned version
+# from GCS (INDEX_SOURCE=gcs, INDEX_BUCKET, INDEX_VERSION) into a writable cache
+# under /tmp. GCP credentials are provided at runtime, never here.
 
 FROM python:3.12-slim AS builder
 
@@ -33,14 +35,13 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 WORKDIR /app
 
-# Run as a non-root user. Create it before copying so the Chroma index can be
-# owned by it: ChromaDB opens the sqlite index read-write, so the directory must
-# be writable by the runtime user.
+# Run as a non-root user. The index is pulled at startup into a writable cache
+# (default /tmp/kuberacle-index, world-writable), so no app-owned data dir is
+# baked or needed here.
 RUN useradd --create-home --uid 10001 appuser
 
-# Runtime assets: config + prompts and the prebuilt Chroma index (baked in).
+# Runtime assets: config + prompts. The index is fetched from GCS at startup.
 COPY configs ./configs
-COPY --chown=appuser:appuser data/vector/chroma_gemini ./data/vector/chroma_gemini
 
 USER appuser
 

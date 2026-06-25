@@ -34,6 +34,7 @@ from kuberacle.api.settings import load_guardrail_settings
 from kuberacle.config import PricingConfig, load_rag_config
 from kuberacle.constants import is_abstention
 from kuberacle.factory import build_qa_system
+from kuberacle.index_sync import load_index_settings, resolve_index
 from kuberacle.observability import context as obs
 from kuberacle.observability.events import emit_request_summary
 from kuberacle.observability.instrumentation import (
@@ -134,7 +135,14 @@ async def lifespan(app: FastAPI):
         obs_settings, config.observability, config.gcp_project, app
     )
 
-    app.state.qa_system = build_qa_system(config, root)
+    # Resolve the index location: a local on-disk directory, or a pinned
+    # version pulled from GCS at startup (decoupled from the image). Pulling
+    # before building means an incompatible artifact fails the boot fast.
+    resolved_index = resolve_index(config, load_index_settings(), root)
+    app.state.k8s_version = resolved_index.k8s_version
+    app.state.qa_system = build_qa_system(
+        config, root, index_dir=resolved_index.persist_directory
+    )
     app.state.pricing = config.pricing
 
     settings = load_guardrail_settings()
@@ -172,6 +180,9 @@ def create_app() -> FastAPI:
     # wires them, so requests served without lifespan emit no metrics.
     app.state.tracing = TracingHandles()
     app.state.pricing = None
+    # Set by the lifespan from the served index's manifest; the web UI reads it
+    # at runtime so a docs-version bump needs no web rebuild.
+    app.state.k8s_version = None
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
@@ -183,6 +194,11 @@ def create_app() -> FastAPI:
     async def health() -> dict:
         """Liveness probe that does not invoke the model."""
         return {"status": "ok"}
+
+    @app.get("/meta")
+    async def meta(request: Request) -> dict:
+        """Serving metadata, including the docs version of the served index."""
+        return {"k8s_version": request.app.state.k8s_version}
 
     @app.post("/query")
     async def query(payload: QueryRequest, request: Request) -> StreamingResponse:

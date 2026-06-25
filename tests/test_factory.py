@@ -70,3 +70,12 @@ def test_build_qa_system_resolves_persist_directory(config):
     vector_store = qa.retriever.semantic_retriever.vector_store
 
     assert vector_store.persist_directory == str(PROJECT_ROOT / config.vector_store.persist_directory)
+
+
+def test_build_qa_system_index_dir_overrides_persist_directory(config):
+    """An explicit index_dir (e.g. a GCS-pulled version) overrides the config path."""
+    override = Path("/tmp/kuberacle-index/chroma_gemini")
+    qa = build_qa_system(config, PROJECT_ROOT, index_dir=override)
+    vector_store = qa.retriever.semantic_retriever.vector_store
+
+    assert vector_store.persist_directory == str(override)
