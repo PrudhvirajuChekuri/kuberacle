@@ -1,13 +1,12 @@
-"""Download and unpack the persisted Chroma index from GCS."""
+"""Download and unpack the persisted Chroma index from GCS.
+
+Pulls the published ``latest`` index into the local on-disk persist directory
+for CI eval and local bootstrapping. The API uses ``kuberacle.index_sync``
+directly to pull a pinned version at startup.
+"""
 
 import argparse
-import json
 import logging
-import os
-import shutil
-import tarfile
-import tempfile
-from pathlib import Path
 from kuberacle.cli._root import project_root
 
 from dotenv import load_dotenv
@@ -15,11 +14,16 @@ from dotenv import load_dotenv
 load_dotenv(project_root() / ".env")
 
 from kuberacle.config import load_rag_config
+from kuberacle.index_sync import (
+    LATEST_MANIFEST,
+    LATEST_TAR,
+    IndexValidationError,
+    download_and_extract,
+)
 
 
 PROJECT_ROOT = project_root()
 CONFIG_PATH = PROJECT_ROOT / "configs" / "rag.yaml"
-MANIFEST_OBJECT = "index/manifest.json"
 
 logger = logging.getLogger(__name__)
 
@@ -29,45 +33,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bucket", required=True, help="GCS bucket name")
     parser.add_argument(
         "--object",
-        default="index/latest.tar.gz",
-        help="GCS object path (default: index/latest.tar.gz)",
+        default=LATEST_TAR,
+        help=f"GCS object path (default: {LATEST_TAR})",
     )
     return parser.parse_args()
-
-
-def _validate_manifest(manifest: dict, config) -> None:
-    """Validate GCS manifest against current config. Hard-fail on incompatible fields."""
-    errors = []
-    warnings = []
-
-    if manifest.get("embedding_model_id") != config.embedding.model_id:
-        errors.append(
-            f"embedding_model_id: index={manifest.get('embedding_model_id')!r}, "
-            f"config={config.embedding.model_id!r}"
-        )
-    if manifest.get("collection_name") != config.vector_store.collection_name:
-        errors.append(
-            f"collection_name: index={manifest.get('collection_name')!r}, "
-            f"config={config.vector_store.collection_name!r}"
-        )
-    if manifest.get("embedding_output_dimensionality") != config.embedding.output_dimensionality:
-        errors.append(
-            f"embedding_output_dimensionality: index={manifest.get('embedding_output_dimensionality')}, "
-            f"config={config.embedding.output_dimensionality}"
-        )
-
-    k8s_version = manifest.get("k8s_version", "unknown")
-    if k8s_version == "unknown":
-        warnings.append("k8s_version unknown in manifest - index may be stale")
-
-    for w in warnings:
-        logger.warning("%s", w)
-
-    if errors:
-        raise SystemExit(
-            "Index is incompatible with current config:\n"
-            + "\n".join(f"  {e}" for e in errors)
-        )
 
 
 def main() -> None:
@@ -81,49 +50,12 @@ def main() -> None:
     config = load_rag_config(CONFIG_PATH)
     index_path = PROJECT_ROOT / config.vector_store.persist_directory
 
-    from google.cloud import storage
-
-    client = storage.Client()
-    bucket = client.bucket(args.bucket)
-
-    logger.info("Validating manifest at gs://%s/%s", args.bucket, MANIFEST_OBJECT)
-    manifest_blob = bucket.blob(MANIFEST_OBJECT)
-    if manifest_blob.exists():
-        manifest = json.loads(manifest_blob.download_as_text())
-        logger.info(
-            "k8s=%s model=%s collection=%s created=%s",
-            manifest.get("k8s_version"),
-            manifest.get("embedding_model_id"),
-            manifest.get("collection_name"),
-            manifest.get("created_at", "unknown"),
-        )
-        _validate_manifest(manifest, config)
-    else:
-        raise SystemExit(
-            "No manifest found at index/manifest.json - index was published without validation. "
-            "Run workflow_dispatch to rebuild and re-publish the index."
-        )
-
-    tmp_fd, tmp_name = tempfile.mkstemp(suffix=".tar.gz")
-    os.close(tmp_fd)
-    tmp_path = Path(tmp_name)
     try:
-        logger.info("Downloading gs://%s/%s", args.bucket, args.object)
-        blob = bucket.blob(args.object)
-        blob.download_to_filename(str(tmp_path))
-
-        if index_path.exists():
-            shutil.rmtree(index_path)
-
-        index_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.info("Extracting to %s", index_path.parent)
-        with tarfile.open(tmp_path, "r:gz") as tar:
-            # filter="data" blocks path-traversal and unsafe members in case the
-            # published artifact is ever tampered with.
-            tar.extractall(index_path.parent, filter="data")
-        logger.info("Index ready at %s", index_path)
-    finally:
-        tmp_path.unlink(missing_ok=True)
+        download_and_extract(
+            args.bucket, args.object, LATEST_MANIFEST, index_path, config
+        )
+    except IndexValidationError as exc:
+        raise SystemExit(str(exc))
 
 
 if __name__ == "__main__":

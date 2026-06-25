@@ -5,6 +5,8 @@ import pytest
 from kuberacle.preprocessing.page_selection import (
     _owner_repo_from_url,
     _fetch_repo_tree,
+    fetch_blob_shas,
+    fetch_head_commit,
     resolve_pages,
 )
 
@@ -86,6 +88,45 @@ def test_resolve_pages_discover_mode_uses_repo_tree(monkeypatch):
 
     resolved = resolve_pages(config=config, mode="discover")
     assert resolved == {"concepts": ["a.md"], "tasks": ["b.md"]}
+
+
+# --- fetch_blob_shas ---
+
+def test_fetch_blob_shas_maps_path_to_sha(monkeypatch):
+    """Blob entries become a path->sha map; trees and incomplete entries drop."""
+    def fake_fetch_tree(repo_url, branch):
+        del repo_url, branch
+        return [
+            {"type": "blob", "path": "hugo.toml", "sha": "h1"},
+            {"type": "blob", "path": "content/en/docs/concepts/a.md", "sha": "a1"},
+            {"type": "tree", "path": "content/en/docs/concepts", "sha": "t1"},
+            {"type": "blob", "path": "no-sha.md"},
+        ]
+
+    monkeypatch.setattr(
+        "kuberacle.preprocessing.page_selection._fetch_repo_tree", fake_fetch_tree
+    )
+    shas = fetch_blob_shas("https://github.com/kubernetes/website", "main")
+    assert shas == {"hugo.toml": "h1", "content/en/docs/concepts/a.md": "a1"}
+
+
+# --- fetch_head_commit ---
+
+def test_fetch_head_commit_returns_sha(monkeypatch):
+    monkeypatch.setattr(
+        "kuberacle.preprocessing.page_selection._github_get_json",
+        lambda url: {"sha": "deadbeef"},
+    )
+    assert fetch_head_commit("https://github.com/kubernetes/website", "main") == "deadbeef"
+
+
+def test_fetch_head_commit_raises_without_sha(monkeypatch):
+    monkeypatch.setattr(
+        "kuberacle.preprocessing.page_selection._github_get_json",
+        lambda url: {},
+    )
+    with pytest.raises(RuntimeError, match="No commit SHA"):
+        fetch_head_commit("https://github.com/kubernetes/website", "main")
 
 
 # --- resolve_pages warnings ---

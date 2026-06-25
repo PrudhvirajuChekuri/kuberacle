@@ -17,5 +17,6 @@ COMMANDS = {
     "serve": "kuberacle.cli.serve",
     "push-index": "kuberacle.cli.push_index",
     "pull-index": "kuberacle.cli.pull_index",
+    "docs-check": "kuberacle.cli.docs_check",
     "sync-prompts": "kuberacle.cli.sync_prompts",
 }

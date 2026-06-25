@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
+import { K8sVersionProvider } from "@/components/version-provider";
+import { getK8sVersion } from "@/lib/server/k8s-version";
+
 const plexSans = IBM_Plex_Sans({
   variable: "--font-plex-sans",
   subsets: ["latin"],
@@ -22,11 +25,12 @@ export const metadata: Metadata = {
 // Apply the persisted theme before paint to avoid a flash; default to dark.
 const themeScript = `try{var t=localStorage.getItem('theme');if(t==='light'){document.documentElement.classList.remove('dark');}else{document.documentElement.classList.add('dark');}}catch(e){document.documentElement.classList.add('dark');}`;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const k8sVersion = await getK8sVersion();
   return (
     <html
       lang="en"
@@ -36,7 +40,9 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>{children}</body>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <K8sVersionProvider value={k8sVersion}>{children}</K8sVersionProvider>
+      </body>
     </html>
   );
 }

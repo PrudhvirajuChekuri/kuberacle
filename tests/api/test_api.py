@@ -44,6 +44,16 @@ def _client_with(events, guardrails=None) -> TestClient:
     return TestClient(app)
 
 
+def test_meta_returns_k8s_version():
+    """The /meta endpoint exposes the served index's docs version at runtime."""
+    app = create_app()
+    app.state.k8s_version = "v1.36"
+    client = TestClient(app)
+    response = client.get("/meta")
+    assert response.status_code == 200
+    assert response.json() == {"k8s_version": "v1.36"}
+
+
 def test_health_ok():
     """Health endpoint should report ok without touching the model."""
     client = TestClient(create_app())

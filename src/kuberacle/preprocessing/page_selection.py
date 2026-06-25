@@ -33,10 +33,21 @@ def _owner_repo_from_url(repo_url: str) -> str:
     return repo_url.removeprefix(prefix).strip("/")
 
 
-def _fetch_repo_tree(repo_url: str, branch: str) -> list[dict]:
-    """Fetch recursive git tree entries from GitHub API."""
-    owner_repo = _owner_repo_from_url(repo_url)
-    url = f"https://api.github.com/repos/{owner_repo}/git/trees/{branch}?recursive=1"
+def _github_get_json(url: str) -> dict:
+    """Fetch and decode a JSON response from the GitHub API with retries.
+
+    Adds the optional ``GITHUB_TOKEN`` bearer auth. Does not retry on explicit
+    HTTP responses (for example 404/401), which are definitive.
+
+    Args:
+        url: Full GitHub API URL.
+
+    Returns:
+        Decoded JSON payload.
+
+    Raises:
+        RuntimeError: On an HTTP error or after exhausting network retries.
+    """
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "kuberacle",
@@ -50,24 +61,30 @@ def _fetch_repo_tree(repo_url: str, branch: str) -> list[dict]:
         request = Request(url, headers=headers)
         try:
             with urlopen(request, timeout=30) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-            break
+                return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
-            # Don't retry on explicit HTTP responses like 404/401.
             raise RuntimeError(
-                f"Failed to fetch repo tree (HTTP {exc.code}) from {url}"
+                f"GitHub API request failed (HTTP {exc.code}) for {url}"
             ) from exc
         except (URLError, ssl.SSLError) as exc:
             if attempt == retries:
                 raise RuntimeError(
-                    f"Failed to fetch repo tree after {retries} attempts ({exc}) from {url}"
+                    f"GitHub API request failed after {retries} attempts ({exc}) for {url}"
                 ) from exc
             sleep_seconds = 2 ** (attempt - 1)
             logger.warning(
-                "GitHub tree fetch attempt %d/%d failed (%s); retrying in %ds",
+                "GitHub API attempt %d/%d failed (%s); retrying in %ds",
                 attempt, retries, exc, sleep_seconds,
             )
             time.sleep(sleep_seconds)
+    raise RuntimeError(f"GitHub API request failed for {url}")  # pragma: no cover
+
+
+def _fetch_repo_tree(repo_url: str, branch: str) -> list[dict]:
+    """Fetch recursive git tree entries from GitHub API."""
+    owner_repo = _owner_repo_from_url(repo_url)
+    url = f"https://api.github.com/repos/{owner_repo}/git/trees/{branch}?recursive=1"
+    payload = _github_get_json(url)
 
     if payload.get("truncated"):
         raise RuntimeError(
@@ -80,6 +97,58 @@ def _fetch_repo_tree(repo_url: str, branch: str) -> list[dict]:
     if not isinstance(tree, list):
         raise RuntimeError(f"Unexpected tree response from GitHub API: {url}")
     return tree
+
+
+def fetch_blob_shas(repo_url: str, branch: str) -> dict[str, str]:
+    """Return a map of repo-relative file path to its git blob SHA.
+
+    Fetches the recursive git tree once and retains the blob SHAs, which give a
+    cheap content fingerprint for every file in the repository without
+    downloading any file contents. Used to record source provenance for the
+    index and to detect upstream changes.
+
+    The ``branch`` argument is any tree-ish accepted by GitHub's trees endpoint:
+    a branch ref (as discover mode uses) or a commit SHA (as download-data pins
+    to). GitHub resolves a commit SHA to its root tree; the returned blob SHAs
+    are content-addressed, so they are identical either way (verified live).
+
+    Args:
+        repo_url: Full HTTPS GitHub repository URL.
+        branch: Branch ref or commit SHA to read the tree at.
+
+    Returns:
+        Mapping of blob path to its git blob SHA (tree entries only).
+    """
+    return {
+        str(entry["path"]): str(entry["sha"])
+        for entry in _fetch_repo_tree(repo_url, branch)
+        if entry.get("type") == "blob" and entry.get("path") and entry.get("sha")
+    }
+
+
+def fetch_head_commit(repo_url: str, branch: str) -> str:
+    """Fetch the current HEAD commit SHA of a branch via the GitHub API.
+
+    Recorded for human traceability and rollback labeling. Change detection is
+    driven by content fingerprints, not this value.
+
+    Args:
+        repo_url: Full HTTPS GitHub repository URL.
+        branch: Git branch name.
+
+    Returns:
+        The commit SHA at the tip of the branch.
+
+    Raises:
+        RuntimeError: If the response does not contain a commit SHA.
+    """
+    owner_repo = _owner_repo_from_url(repo_url)
+    url = f"https://api.github.com/repos/{owner_repo}/commits/{branch}"
+    payload = _github_get_json(url)
+    sha = payload.get("sha")
+    if not isinstance(sha, str) or not sha:
+        raise RuntimeError(f"No commit SHA in GitHub response for {url}")
+    return sha
 
 
 def discover_pages(

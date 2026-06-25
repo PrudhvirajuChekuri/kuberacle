@@ -1,5 +1,9 @@
-/** Corpus Kubernetes version, sourced from data/k8s_version.txt at build time. */
-export const K8S_VERSION = process.env.NEXT_PUBLIC_K8S_VERSION ?? "v1.36";
+/**
+ * Fallback Kubernetes docs version, shown only if the API's /meta is
+ * unreachable. The live value is the served index's version, fetched at request
+ * time (see lib/server/k8s-version.ts) and provided via K8sVersionProvider.
+ */
+export const DEFAULT_K8S_VERSION = "v1.36";
 
 /**
  * Abstention sentinel emitted by the backend (mirrors ABSTENTION_SENTINEL in

@@ -1,8 +1,10 @@
+"use client";
+
 import { ArrowRight } from "lucide-react";
 
 import { ChatInput } from "@/components/chat-input";
 import { Cube } from "@/components/cube-icon";
-import { K8S_VERSION } from "@/lib/constants";
+import { useK8sVersion } from "@/components/version-provider";
 
 const SUGGESTIONS = [
   { tag: "concept", label: "What is a Pod?", q: "What is a Pod?" },
@@ -20,6 +22,7 @@ const SUGGESTIONS = [
 
 /** Landing hero shown before the first question: mark, prompt, suggestions. */
 export function EmptyState({ onSend }: { onSend: (value: string) => void }) {
+  const k8sVersion = useK8sVersion();
   return (
     <div className="mx-auto flex max-w-[660px] flex-col items-center px-6 pb-16 pt-[8vh] text-center">
       <div className="mb-7 grid h-[68px] w-[68px] place-items-center rounded-[18px] bg-[linear-gradient(150deg,var(--brand),color-mix(in_srgb,var(--brand)_65%,#000))] text-white shadow-[0_18px_48px_-18px_var(--brand-line)]">
@@ -56,7 +59,7 @@ export function EmptyState({ onSend }: { onSend: (value: string) => void }) {
         ))}
       </div>
       <div className="mt-7 flex items-center gap-3 font-mono text-xs text-text-3">
-        <span>Kubernetes {K8S_VERSION}</span>
+        <span>Kubernetes {k8sVersion}</span>
         <span className="h-[3px] w-[3px] rounded-full bg-text-3" />
         <span>citations on every answer</span>
       </div>

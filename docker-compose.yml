@@ -1,6 +1,8 @@
-# Local-only stack: FastAPI backend (baked Chroma index) + Kuberacle web UI.
+# Local-only stack: FastAPI backend + Kuberacle web UI.
 # Run: docker compose up
-# The backend still calls GCP at runtime, so your local ADC is mounted read-only.
+# The image carries no index; the backend pulls the published 'latest' index
+# from GCS at startup and calls GCP at runtime, so your local ADC is mounted
+# read-only.
 
 name: kuberacle
 
@@ -9,12 +11,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # GCP_PROJECT / GCP_LOCATION (and GCS_INDEX_BUCKET, unused here) come from .env.
+    # GCP_PROJECT / GCP_LOCATION / GCS_INDEX_BUCKET come from .env.
     env_file:
       - .env
     environment:
       # Point ADC at the mounted credentials file.
       GOOGLE_APPLICATION_CREDENTIALS: /gcp/adc.json
+      # Pull the index from GCS at startup (no baked index in the image).
+      # 'latest' is for local dev; production pins an exact INDEX_VERSION.
+      INDEX_SOURCE: gcs
+      INDEX_BUCKET: ${GCS_INDEX_BUCKET}
+      INDEX_VERSION: latest
     volumes:
       # Mount local Application Default Credentials read-only (never baked into the image).
       - ${HOME}/.config/gcloud/application_default_credentials.json:/gcp/adc.json:ro

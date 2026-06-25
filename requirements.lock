@@ -76,13 +76,13 @@ langgraph==1.2.5
 langgraph-checkpoint==4.1.1
 langgraph-prebuilt==1.1.0
 langgraph-sdk==0.4.2
-langsmith==0.8.15
+langsmith==0.8.18
 license-expression==30.4.4
 markdown-it-py==4.2.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
 mmh3==5.2.1
-msgpack==1.2.0
+msgpack==1.2.1
 multidict==6.7.1
 multiprocess==0.70.19
 nest-asyncio==1.6.0
@@ -127,7 +127,7 @@ pyasn1_modules==0.4.2
 pybase64==1.4.3
 pycparser==3.0
 pydantic==2.13.4
-pydantic-settings==2.14.1
+pydantic-settings==2.14.2
 pydantic_core==2.46.4
 Pygments==2.20.0
 pyparsing==3.3.2

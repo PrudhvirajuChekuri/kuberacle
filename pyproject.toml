@@ -54,6 +54,7 @@ kuberacle-evaluate = "kuberacle.cli.evaluate:main"
 kuberacle-serve = "kuberacle.cli.serve:main"
 kuberacle-push-index = "kuberacle.cli.push_index:main"
 kuberacle-pull-index = "kuberacle.cli.pull_index:main"
+kuberacle-docs-check = "kuberacle.cli.docs_check:main"
 kuberacle-sync-prompts = "kuberacle.cli.sync_prompts:main"
 
 [tool.setuptools.packages.find]

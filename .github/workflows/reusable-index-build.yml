@@ -1,0 +1,89 @@
+name: reusable-index-build
+
+# Rebuild the full corpus index, gate it on the deterministic eval, and publish
+# a versioned artifact (plus the 'latest' pointer) to GCS - but only if the gate
+# passes. Reused by the manual workflow_dispatch (eval.yml) and the scheduled
+# docs-check. Publishing to GCS does NOT touch production; rolling a new version
+# into Cloud Run is a separate, deliberate step (INDEX_VERSION).
+#
+# The gate is the deterministic suite (recall/mrr/abstention/non-empty) on the
+# full v2 set; RAGAS stays a manual/local quality check (slow and flaky in CI).
+
+on:
+  workflow_call:
+    outputs:
+      index_version:
+        description: The published index version (empty if the gate failed).
+        value: ${{ jobs.build.outputs.index_version }}
+
+# Serialize index publishing so a manual rebuild and the scheduled docs-check
+# never push to GCS at the same time. Do not cancel an in-progress build - let it
+# finish its publish.
+concurrency:
+  group: index-publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      index_version: ${{ steps.publish.outputs.index_version }}
+    env:
+      GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+      GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # Authenticate after install so cloud credentials are not present in the
+      # environment during dependency build/install.
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Prepare full corpus
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m kuberacle download-data --config configs/datasets/full.yaml
+          python -m kuberacle preprocess --config configs/datasets/full.yaml
+
+      - name: Build vector index
+        run: python -m kuberacle ingest
+
+      - name: Run deterministic evaluation gate
+        run: |
+          python -m kuberacle evaluate \
+            --mode deterministic \
+            --json-out artifacts/evals/ci-full-eval.json \
+            --md-out artifacts/evals/ci-full-eval.md
+
+      - name: Publish versioned index
+        id: publish
+        run: |
+          python -m kuberacle push-index \
+            --bucket ${{ secrets.GCS_INDEX_BUCKET }} \
+            --version-out index_version.txt
+          echo "index_version=$(cat index_version.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-eval-artifacts-full
+          path: artifacts/evals/
