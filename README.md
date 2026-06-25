@@ -6,9 +6,9 @@ Ask questions about Kubernetes and get grounded answers with citations to the of
 
 ## Project Status
 
-🚧 **In Development**
+**Live** at **[kuberacle.dev](https://kuberacle.dev)** on GCP Cloud Run.
 
-The full RAG pipeline is implemented and running on GCP. Preprocessing, ingestion, hybrid retrieval, reranking, cited answer generation, and deterministic evaluation gates are all in place with CI on pull requests. A streaming FastAPI service and a Next.js web UI sit on top of the pipeline (see [Run the API](#run-the-api) and [Web UI](#web-ui)), and the whole stack runs in containers via Docker Compose (see [Run with Docker](#run-with-docker)).
+The full stack is deployed: the hybrid-retrieval RAG pipeline (preprocessing, ingestion, reranking, cited answer generation, abstention), deterministic and RAGAS evaluation gates with CI on pull requests, a streaming FastAPI service, a Next.js web UI, and two-plane production observability. See [Run the API](#run-the-api), [Web UI](#web-ui), [Observability](#observability), and [Run with Docker](#run-with-docker).
 
 ## Architecture
 
