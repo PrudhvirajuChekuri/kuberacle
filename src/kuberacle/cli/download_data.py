@@ -1,6 +1,7 @@
 """Download Kubernetes documentation files from the official GitHub repository."""
 
 import argparse
+import json
 import logging
 import re
 import time
@@ -13,7 +14,12 @@ from urllib.request import Request, urlopen
 import yaml
 from tqdm import tqdm
 
-from kuberacle.preprocessing.page_selection import resolve_pages, _owner_repo_from_url
+from kuberacle.preprocessing.page_selection import (
+    resolve_pages,
+    fetch_blob_shas,
+    fetch_head_commit,
+    _owner_repo_from_url,
+)
 
 
 # Repository root (assumes script is run from project root)
@@ -22,6 +28,7 @@ PROJECT_ROOT = project_root()
 logger = logging.getLogger(__name__)
 CONFIG_PATH = PROJECT_ROOT / "configs" / "datasets" / "full.yaml"
 DATA_DIR = PROJECT_ROOT / "data"
+SOURCE_FILES_PATH = DATA_DIR / "source_files.json"
 
 
 def load_config(config_path: str | Path) -> dict:
@@ -202,18 +209,29 @@ def normalize_repo_relative_path(path: str, path_type: str) -> str:
     return cleaned
 
 
-def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, int]:
+def download_pages(
+    config: dict,
+    page_map: dict[str, list[str]],
+    blob_shas: dict[str, str],
+) -> tuple[dict[str, int], dict]:
     """Download all pages listed in the config and their dependencies.
 
-    Fetches raw markdown files, then scans each for code_sample, include,
-    and glossary_definition references and fetches those too.
+    Fetches raw markdown files, then scans each for code_sample, include, and
+    glossary_definition references and fetches those too. While downloading, it
+    records a source inventory: the repo-relative path and git blob SHA of every
+    fetched file, plus the per-page dependency edges (which examples, includes,
+    and glossary files each page pulls in). The inventory drives the index
+    provenance manifest and upstream change detection.
 
     Args:
         config: Parsed config dict from the dataset YAML.
         page_map: Section-to-pages map from resolve_pages().
+        blob_shas: Map of repo-relative path to git blob SHA, from
+            fetch_blob_shas(); used to stamp each fetched file's content sha.
 
     Returns:
-        Dict with counts of downloaded files by type.
+        Tuple of (counts by file type, inventory). The inventory has the shape
+        ``{"files": {path: {"sha", "kind"}}, "dependencies": {page: [path]}}``.
     """
     repo_url = config["source_repo"]
     branch = config["source_branch"]
@@ -225,7 +243,27 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
     referenced_examples = set()
     referenced_includes: dict[str, set[str]] = {}
     referenced_glossary_terms: set[str] = set()
-    counts = {"pages": 0, "examples": 0, "includes": 0, "glossary": 0, "failed": 0}
+    counts = {
+        "pages": 0, "examples": 0, "includes": 0, "glossary": 0,
+        "failed": 0, "missing_sha": 0,
+    }
+
+    inventory_files: dict[str, dict] = {}
+    page_dependencies: dict[str, set[str]] = {}
+    # Raw include refs per page; resolved to repo paths after the include loop.
+    page_include_refs: dict[str, list[str]] = {}
+    # Resolved repo path for each include ref, learned during the include loop.
+    resolved_include_paths: dict[str, str] = {}
+
+    def record_file(repo_path: str, kind: str) -> None:
+        """Stamp a fetched file into the inventory with its blob sha."""
+        sha = blob_shas.get(repo_path)
+        if sha is None:
+            logger.warning(
+                "No blob SHA for %s; source provenance will be incomplete", repo_path
+            )
+            counts["missing_sha"] += 1
+        inventory_files[repo_path] = {"sha": sha or "", "kind": kind}
 
     # Download doc pages
     all_pages = [
@@ -247,13 +285,29 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
 
             save_file(content, local_path)
             counts["pages"] += 1
+            record_file(remote_path, "page")
 
-            # Scan for dependencies
-            referenced_examples.update(scan_code_samples(content))
+            # Scan for dependencies and record per-page edges.
+            deps = page_dependencies.setdefault(remote_path, set())
+            for example_ref in scan_code_samples(content):
+                referenced_examples.add(example_ref)
+                try:
+                    deps.add(f"{examples_path}/"
+                             f"{normalize_repo_relative_path(example_ref, 'example')}")
+                except ValueError:
+                    pass
             source_dir = str(Path(section) / Path(page).parent)
             for include_ref in scan_includes(content):
                 referenced_includes.setdefault(include_ref, set()).add(source_dir)
-            referenced_glossary_terms.update(scan_glossary_definitions(content))
+                page_include_refs.setdefault(remote_path, []).append(include_ref)
+            for term_id in scan_glossary_definitions(content):
+                referenced_glossary_terms.add(term_id)
+                if glossary_path:
+                    try:
+                        deps.add(f"{glossary_path}/"
+                                 f"{normalize_repo_relative_path(term_id + '.md', 'glossary term')}")
+                    except ValueError:
+                        pass
 
     # Download referenced example files
     logger.info("Fetching %d referenced examples", len(referenced_examples))
@@ -276,6 +330,7 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
 
         save_file(content, local_path)
         counts["examples"] += 1
+        record_file(remote_path, "example")
 
     # Download referenced include files
     logger.info("Fetching %d referenced includes", len(referenced_includes))
@@ -298,10 +353,12 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
 
         local_path = DATA_DIR / "includes" / normalized_include
         fetched_content = None
+        resolved_remote_path = None
         for remote_path in candidate_remote_paths:
             url = build_raw_url(repo_url, branch, remote_path)
             fetched_content = fetch_file(url, quiet=True)
             if fetched_content is not None:
+                resolved_remote_path = remote_path
                 break
 
         if fetched_content is None:
@@ -311,6 +368,8 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
 
         save_file(fetched_content, local_path)
         counts["includes"] += 1
+        record_file(resolved_remote_path, "include")
+        resolved_include_paths[include_file] = resolved_remote_path
 
     # Download referenced glossary term files
     if glossary_path:
@@ -336,8 +395,23 @@ def download_pages(config: dict, page_map: dict[str, list[str]]) -> dict[str, in
 
             save_file(content, local_path)
             counts["glossary"] += 1
+            record_file(remote_path, "glossary")
 
-    return counts
+    # Backfill include dependency edges now that include paths are resolved.
+    for page_path, include_refs in page_include_refs.items():
+        deps = page_dependencies.setdefault(page_path, set())
+        for include_ref in include_refs:
+            resolved = resolved_include_paths.get(include_ref)
+            if resolved is not None:
+                deps.add(resolved)
+
+    inventory = {
+        "files": inventory_files,
+        "dependencies": {
+            page: sorted(deps) for page, deps in page_dependencies.items() if deps
+        },
+    }
+    return counts, inventory
 
 
 def main() -> None:
@@ -384,10 +458,22 @@ def main() -> None:
     config = load_config(config_path)
     logger.info("Source: %s (%s)", config["source_repo"], config["source_branch"])
 
+    repo_url = config["source_repo"]
+    branch = config["source_branch"]
+    logger.info("Resolving upstream commit for %s (%s)", repo_url, branch)
+    source_head_commit = fetch_head_commit(repo_url, branch)
+    logger.info("Pinned to commit %s", source_head_commit[:8])
+    # Pin every fetch (version, pages, dependencies, blob SHAs) to the resolved
+    # commit so the recorded provenance matches the downloaded bytes exactly,
+    # even if upstream main moves mid-run.
+    config = {**config, "source_branch": source_head_commit}
+
     logger.info("Fetching k8s version from source repo...")
     k8s_version = fetch_k8s_version(config)
     logger.info("K8s version: %s", k8s_version)
     save_file(k8s_version, DATA_DIR / "k8s_version.txt")
+
+    blob_shas = fetch_blob_shas(repo_url, source_head_commit)
 
     sections = args.sections.split(",") if args.sections else None
     page_map = resolve_pages(
@@ -399,7 +485,27 @@ def main() -> None:
     total_pages = sum(len(values) for values in page_map.values())
     logger.info("Resolved pages: %d", total_pages)
 
-    counts = download_pages(config, page_map)
+    counts, inventory = download_pages(config, page_map, blob_shas)
+
+    # hugo.toml supplies the docs version, so changes to it must trigger a rebuild.
+    hugo_sha = blob_shas.get("hugo.toml")
+    if hugo_sha:
+        inventory["files"]["hugo.toml"] = {"sha": hugo_sha, "kind": "config"}
+    else:
+        logger.warning("No blob SHA for hugo.toml; source provenance will be incomplete")
+        counts["missing_sha"] += 1
+
+    source_files = {
+        "source_head_commit": source_head_commit,
+        "files": inventory["files"],
+        "dependencies": inventory["dependencies"],
+    }
+    save_file(json.dumps(source_files, indent=2, sort_keys=True), SOURCE_FILES_PATH)
+    logger.info(
+        "Source inventory: %d files, %d pages with dependencies (commit %s)",
+        len(source_files["files"]), len(source_files["dependencies"]),
+        source_head_commit[:8],
+    )
 
     logger.info(
         "Done: %d pages, %d examples, %d includes, %d glossary terms, %d failed",
@@ -408,6 +514,13 @@ def main() -> None:
     )
     if counts["failed"] > 0 and not args.allow_partial:
         raise SystemExit(1)
+    # Incomplete provenance (a "" blob SHA) would make freshness detection
+    # unreliable, so a publish-grade run must fail closed; partial runs tolerate.
+    if counts["missing_sha"] > 0 and not args.allow_partial:
+        raise SystemExit(
+            f"{counts['missing_sha']} downloaded files had no blob SHA; "
+            "source provenance is incomplete. Re-run, or pass --allow-partial."
+        )
 
 
 if __name__ == "__main__":

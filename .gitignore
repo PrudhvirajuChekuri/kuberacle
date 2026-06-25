@@ -10,6 +10,7 @@ data/glossary/
 data/processed/
 data/vector/
 data/k8s_version.txt
+data/source_files.json
 
 # Python
 __pycache__/
