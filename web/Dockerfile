@@ -1,5 +1,5 @@
 # Frontend image for the Kuberacle Next.js UI.
-# Build context is the repo root so the build can read data/k8s_version.txt.
+# Build context is the repo root (standalone layout expects web/ under /app).
 # Multi-stage: build the standalone bundle, then serve it on a slim node runtime.
 
 FROM node:22-alpine AS builder
@@ -10,10 +10,9 @@ WORKDIR /app
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 
-# App source, plus the corpus version file that next.config.ts reads at build
-# time via ../data/k8s_version.txt (resolves to /data from the /app workdir).
+# App source. The corpus version is fetched from the API at runtime, so no
+# data/ files are needed at build time.
 COPY web/ ./
-COPY data/k8s_version.txt /data/k8s_version.txt
 
 # Public Turnstile site key, baked into the client bundle at build time.
 # Unset (e.g. local compose) leaves Turnstile disabled in the built image.
