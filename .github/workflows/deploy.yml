@@ -1,0 +1,152 @@
+name: deploy
+
+# Continuous deployment for application code (api + web images).
+#
+# Chained off the `tests` workflow: it only fires after tests succeed on main,
+# so a red suite never reaches a deploy. It rebuilds only the service whose code
+# changed, pushes SHA-tagged images, then rolls them out to Cloud Run behind a
+# manual-approval `production` environment gate (build + push run automatically;
+# the rollout waits for a one-click approval).
+on:
+  workflow_run:
+    workflows: ["tests"]
+    types:
+      - completed
+    branches:
+      - main
+
+env:
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+  GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+  REGION: us-central1
+  REPO: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/k8s-rag
+
+jobs:
+  detect:
+    # Only proceed when the tests run we are chained to actually passed.
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+      sha: ${{ steps.vars.outputs.sha }}
+    steps:
+      - name: Checkout the tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+
+      - name: Resolve short SHA
+        id: vars
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Detect changed services
+        id: filter
+        run: |
+          # Compare the tested commit against its first parent. Any path that
+          # affects the API image sets api=true; anything under web/ sets web.
+          changed="$(git diff --name-only HEAD^ HEAD)"
+          echo "Changed files:"; echo "$changed"
+          api=false; web=false
+          while IFS= read -r f; do
+            case "$f" in
+              src/*|configs/*|Dockerfile|pyproject.toml|requirements.lock) api=true ;;
+            esac
+            case "$f" in
+              web/*) web=true ;;
+            esac
+          done <<< "$changed"
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+          echo "web=$web" >> "$GITHUB_OUTPUT"
+          echo "Resolved: api=$api web=$web"
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.api == 'true' || needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      SHA: ${{ needs.detect.outputs.sha }}
+    steps:
+      - name: Checkout the tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push API image
+        if: needs.detect.outputs.api == 'true'
+        run: |
+          docker build --platform linux/amd64 -t "$REPO/api:$SHA" -f Dockerfile .
+          docker push "$REPO/api:$SHA"
+
+      - name: Build and push web image
+        if: needs.detect.outputs.web == 'true'
+        # The Turnstile site key is a build-time public value baked into the web
+        # bundle; it is held as a repo secret rather than committed.
+        run: |
+          docker build --platform linux/amd64 -t "$REPO/web:$SHA" -f web/Dockerfile \
+            --build-arg NEXT_PUBLIC_TURNSTILE_SITE_KEY="${{ secrets.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}" .
+          docker push "$REPO/web:$SHA"
+
+  deploy:
+    needs: [detect, build]
+    if: needs.detect.outputs.api == 'true' || needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    # Manual-approval gate: the `production` environment must require a reviewer
+    # in repo settings, so the rollout waits for a one-click approval.
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      SHA: ${{ needs.detect.outputs.sha }}
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy API
+        if: needs.detect.outputs.api == 'true'
+        # --image preserves all other env/flags (INDEX_VERSION, guardrails, etc.);
+        # SERVICE_VERSION is bumped so observability labels the new revision.
+        run: |
+          gcloud run services update k8s-rag-api --region "$REGION" --project "$GCP_PROJECT" \
+            --image "$REPO/api:$SHA" \
+            --update-env-vars "SERVICE_VERSION=$SHA"
+
+      - name: Deploy web
+        if: needs.detect.outputs.web == 'true'
+        run: |
+          gcloud run services update k8s-rag-web --region "$REGION" --project "$GCP_PROJECT" \
+            --image "$REPO/web:$SHA"
+
+      - name: Verify live
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://kuberacle.dev)
+          echo "kuberacle.dev -> $code"
+          test "$code" = "200"
+          api_url=$(gcloud run services describe k8s-rag-api --region "$REGION" \
+            --project "$GCP_PROJECT" --format="value(status.url)")
+          anon=$(curl -s -o /dev/null -w "%{http_code}" "$api_url/meta")
+          echo "anon api $api_url/meta -> $anon"
+          test "$anon" = "403"
