@@ -38,6 +38,26 @@ class GuardrailSettings:
     turnstile_hostnames: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class CacheSettings:
+    """Runtime configuration for the Firestore answer cache.
+
+    Attributes:
+        enabled: Whether the answer cache is consulted and written.
+        collection: Firestore collection holding cached answers.
+        ttl_days: Days before a cached answer expires (drives the Firestore TTL
+            policy field and the read-time expiry check).
+        gcp_project: GCP project ID hosting the Firestore database.
+        firestore_database: Firestore database name (``(default)`` normally).
+    """
+
+    enabled: bool
+    collection: str
+    ttl_days: int
+    gcp_project: str
+    firestore_database: str
+
+
 def _env_bool(name: str, default: bool = False) -> bool:
     """Read a boolean from the environment.
 
@@ -103,4 +123,31 @@ def load_guardrail_settings() -> GuardrailSettings:
         gcp_project=gcp_project,
         firestore_database=os.environ.get("FIRESTORE_DATABASE", "(default)"),
         turnstile_hostnames=hostnames,
+    )
+
+
+def load_cache_settings() -> CacheSettings:
+    """Load answer-cache settings from the environment.
+
+    Returns:
+        Parsed CacheSettings. Defaults to disabled so local development, tests,
+        and the CLI need no Firestore.
+
+    Raises:
+        RuntimeError: When the cache is enabled but ``GCP_PROJECT`` (required to
+            reach Firestore) is missing.
+    """
+    enabled = _env_bool("ANSWER_CACHE_ENABLED", False)
+    gcp_project = os.environ.get("GCP_PROJECT", "")
+    if enabled and not gcp_project:
+        raise RuntimeError(
+            "ANSWER_CACHE_ENABLED is set but GCP_PROJECT is missing."
+        )
+    return CacheSettings(
+        enabled=enabled,
+        collection=os.environ.get("ANSWER_CACHE_COLLECTION", "answer_cache").strip()
+        or "answer_cache",
+        ttl_days=int(os.environ.get("ANSWER_CACHE_TTL_DAYS", "14")),
+        gcp_project=gcp_project,
+        firestore_database=os.environ.get("FIRESTORE_DATABASE", "(default)"),
     )

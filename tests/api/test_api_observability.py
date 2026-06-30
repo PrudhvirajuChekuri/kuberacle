@@ -31,10 +31,21 @@ class FakeGuardrails:
     def __init__(self, error=None):
         self._error = error
 
-    def enforce(self, client_ip, turnstile_token):
+    def verify_turnstile(self, client_ip, turnstile_token):
         del client_ip, turnstile_token
-        if self._error is not None:
+        if self._error is not None and self._error.status_code == 403:
             raise self._error
+
+    def check_ip_rate_limit(self, client_ip):
+        del client_ip
+        if self._error is not None and self._error.status_code != 403:
+            raise self._error
+
+    def charge_ip(self, client_ip):
+        return None
+
+    def charge_ip_and_global(self, client_ip):
+        return None
 
 
 def _client(events, *, pricing=PRICING, guardrails=None):

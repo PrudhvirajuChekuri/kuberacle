@@ -1,8 +1,9 @@
 """Tests for the Firestore-backed daily counters.
 
 A fake in-memory Firestore client exercises the transaction logic without the
-``firestore`` package or a live database. The cap decision is also tested as a
-pure function.
+``firestore`` package or a live database. The per-IP counter is peeked
+read-only before the cache and charged alone (hit) or with the global counter
+in one transaction (miss).
 """
 
 from kuberacle.api.counters import Decision, FirestoreCounters, _decide
@@ -88,7 +89,7 @@ def test_decide_allows_under_caps():
 
 def test_decide_denies_global_first():
     assert _decide(300, 0, 10, 300) == Decision(False, "global")
-    # Both exhausted -> attributed to global.
+    # Both exhausted -> attributed to global (a site-wide outage).
     assert _decide(300, 10, 10, 300) == Decision(False, "global")
 
 
@@ -96,15 +97,36 @@ def test_decide_denies_per_ip():
     assert _decide(0, 10, 10, 300) == Decision(False, "per_ip")
 
 
-def test_fresh_request_increments_both():
+def test_ip_under_cap_is_read_only():
+    store = {f"ip_{DAY}_h": {"count": 5}}
+    counters = _counters(store)
+    assert counters.ip_under_cap("h", 10, today=DAY) is True
+    assert counters.ip_under_cap("h", 5, today=DAY) is False
+    # Peeking never advances the counter.
+    assert store[f"ip_{DAY}_h"]["count"] == 5
+
+
+def test_ip_under_cap_treats_absent_counter_as_zero():
+    assert _counters({}).ip_under_cap("h", 10, today=DAY) is True
+
+
+def test_check_and_increment_ip_charges_only_per_ip():
     store = {}
-    decision = _counters(store).check_and_increment("h", 10, 300, today=DAY)
-    assert decision == Decision(True, None)
-    assert store[f"global_{DAY}"]["count"] == 1
+    allowed = _counters(store).check_and_increment_ip("h", 10, today=DAY)
+    assert allowed is True
     assert store[f"ip_{DAY}_h"]["count"] == 1
+    # The hit path must not touch the global counter.
+    assert f"global_{DAY}" not in store
 
 
-def test_existing_counts_increment():
+def test_check_and_increment_ip_cap_hit_does_not_increment():
+    store = {f"ip_{DAY}_h": {"count": 10}}
+    allowed = _counters(store).check_and_increment_ip("h", 10, today=DAY)
+    assert allowed is False
+    assert store[f"ip_{DAY}_h"]["count"] == 10
+
+
+def test_combined_increments_both_when_allowed():
     store = {f"global_{DAY}": {"count": 5}, f"ip_{DAY}_h": {"count": 2}}
     decision = _counters(store).check_and_increment("h", 10, 300, today=DAY)
     assert decision == Decision(True, None)
@@ -112,27 +134,18 @@ def test_existing_counts_increment():
     assert store[f"ip_{DAY}_h"]["count"] == 3
 
 
-def test_global_cap_hit_does_not_increment_per_ip():
+def test_combined_global_cap_hit_increments_neither():
     store = {f"global_{DAY}": {"count": 300}}
     decision = _counters(store).check_and_increment("h", 10, 300, today=DAY)
     assert decision == Decision(False, "global")
-    # Neither counter moved: global stays at the cap, per-IP is never created.
+    # The global rejection must not burn per-IP budget.
     assert store[f"global_{DAY}"]["count"] == 300
     assert f"ip_{DAY}_h" not in store
 
 
-def test_per_ip_cap_hit_does_not_increment_global():
+def test_combined_per_ip_cap_hit_increments_neither():
     store = {f"global_{DAY}": {"count": 5}, f"ip_{DAY}_h": {"count": 10}}
     decision = _counters(store).check_and_increment("h", 10, 300, today=DAY)
     assert decision == Decision(False, "per_ip")
-    # Neither counter moved.
     assert store[f"global_{DAY}"]["count"] == 5
     assert store[f"ip_{DAY}_h"]["count"] == 10
-
-
-def test_per_ip_counters_are_isolated_by_hash():
-    store = {f"ip_{DAY}_a": {"count": 10}}
-    decision = _counters(store).check_and_increment("b", 10, 300, today=DAY)
-    assert decision == Decision(True, None)
-    assert store[f"ip_{DAY}_b"]["count"] == 1
-    assert store[f"ip_{DAY}_a"]["count"] == 10

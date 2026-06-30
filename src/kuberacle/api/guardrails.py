@@ -63,16 +63,27 @@ class Guardrails:
         self._counters = counters
         self._verify = verifier
 
-    def enforce(self, client_ip: str, turnstile_token: str) -> None:
-        """Verify the request and consume one unit of rate-limit budget.
+    _PER_IP_MESSAGE = (
+        "You have reached your daily query limit. Please try again tomorrow."
+    )
+    _GLOBAL_MESSAGE = (
+        "The daily query limit for this demo has been reached. "
+        "Please try again tomorrow."
+    )
+
+    def _ip_hash(self, client_ip: str) -> str:
+        """Return the salted hash of a client IP (bucketing missing IPs)."""
+        return hash_ip(client_ip or "unknown", self._settings.ip_hash_salt)
+
+    def verify_turnstile(self, client_ip: str, turnstile_token: str) -> None:
+        """Verify the Turnstile token, the first gate before any app work.
 
         Args:
             client_ip: Client IP forwarded by the web service.
             turnstile_token: Turnstile token from the browser widget.
 
         Raises:
-            GuardrailError: 403 when the Turnstile check fails; 429 when a
-                per-IP or global daily cap is reached.
+            GuardrailError: 403 when the Turnstile check fails.
         """
         settings = self._settings
         if not self._verify(
@@ -83,20 +94,65 @@ class Guardrails:
         ):
             raise GuardrailError(403, "Bot check failed. Please reload and try again.")
 
-        ip_hash = hash_ip(client_ip or "unknown", settings.ip_hash_salt)
+    def check_ip_rate_limit(self, client_ip: str) -> None:
+        """Reject an already over-cap client before the cache is consulted.
+
+        A read-only check that charges nothing, so an over-cap client never
+        reaches the cache lookup. The per-IP counter is charged later, once the
+        request is actually served, by :meth:`charge_ip` (hit) or
+        :meth:`charge_ip_and_global` (miss).
+
+        Args:
+            client_ip: Client IP forwarded by the web service.
+
+        Raises:
+            GuardrailError: 429 when the per-IP daily cap is already reached.
+        """
+        if not self._counters.ip_under_cap(
+            self._ip_hash(client_ip), self._settings.rate_limit_per_ip
+        ):
+            raise GuardrailError(429, self._PER_IP_MESSAGE)
+
+    def charge_ip(self, client_ip: str) -> None:
+        """Charge one unit of per-IP budget for a served cache hit.
+
+        A hit bypasses the global cap (it costs nothing) but still consumes
+        per-IP budget so a cached answer cannot be hammered past the cap.
+
+        Args:
+            client_ip: Client IP forwarded by the web service.
+
+        Raises:
+            GuardrailError: 429 when the per-IP daily cap is reached (a race
+                since the pre-cache check, atomically rejected here).
+        """
+        if not self._counters.check_and_increment_ip(
+            self._ip_hash(client_ip), self._settings.rate_limit_per_ip
+        ):
+            raise GuardrailError(429, self._PER_IP_MESSAGE)
+
+    def charge_ip_and_global(self, client_ip: str) -> None:
+        """Charge per-IP and global budget atomically for a cache miss.
+
+        A miss can trigger the paid pipeline, so it draws down both caps in one
+        transaction: neither counter is charged unless both are below their cap,
+        and an exhausted global cap is reported as a demo-wide outage.
+
+        Args:
+            client_ip: Client IP forwarded by the web service.
+
+        Raises:
+            GuardrailError: 429 when either the global or per-IP daily cap is
+                reached.
+        """
+        settings = self._settings
         decision = self._counters.check_and_increment(
-            ip_hash, settings.rate_limit_per_ip, settings.global_daily_cap
+            self._ip_hash(client_ip),
+            settings.rate_limit_per_ip,
+            settings.global_daily_cap,
         )
         if decision.allowed:
             return
-
         if decision.reason == "global":
-            raise GuardrailError(
-                429,
-                "The daily query limit for this demo has been reached. "
-                "Please try again tomorrow.",
-            )
-        raise GuardrailError(
-            429,
-            "You have reached your daily query limit. Please try again tomorrow.",
-        )
+            raise GuardrailError(429, self._GLOBAL_MESSAGE)
+        raise GuardrailError(429, self._PER_IP_MESSAGE)

@@ -45,6 +45,11 @@ class RequestMetrics:
         chunks_retrieved: Number of chunks returned by retrieval.
         citations_count: Number of validated citations on the answer.
         insufficient_evidence: Whether the answer failed citation validation.
+        cache_hit: Whether the answer was served from the answer cache.
+        cache_backend: Backing store that served a hit (``firestore``), else
+            ``none``.
+        saved_cost_estimate: Estimated pipeline cost avoided by a cache hit, in
+            USD (the original request's cost, replayed from the cache entry).
         stage_ms: Wall-clock duration per pipeline stage, in milliseconds.
         tokens: Token counts keyed by ``<stage>_in`` / ``<stage>_out``.
         cost_usd: Estimated cost in USD keyed by stage.
@@ -69,6 +74,9 @@ class RequestMetrics:
     chunks_retrieved: int = 0
     citations_count: int = 0
     insufficient_evidence: bool = False
+    cache_hit: bool = False
+    cache_backend: str = "none"
+    saved_cost_estimate: float = 0.0
     stage_ms: dict[str, float] = field(default_factory=dict)
     tokens: dict[str, int] = field(default_factory=dict)
     cost_usd: dict[str, float] = field(default_factory=dict)
