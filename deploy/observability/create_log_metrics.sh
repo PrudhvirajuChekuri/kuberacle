@@ -61,11 +61,46 @@ bucketOptions:
     scale: 0.0001
 YAML
 
+# Answer-cache requests, labelled by cache_hit (numerator + denominator for the
+# hit-rate ratio). Boolean cache_hit extracts to the strings "true"/"false".
+cat > "$TMP/cache_requests.yaml" <<YAML
+description: "Kuberacle answer-cache requests by cache_hit"
+filter: '${BASE_FILTER}'
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  labels:
+  - key: cache_hit
+labelExtractors:
+  cache_hit: EXTRACT(jsonPayload.cache_hit)
+YAML
+
+# Estimated pipeline cost avoided by cache hits (USD), summed per day. Misses
+# log 0.0 and contribute nothing to the sum.
+cat > "$TMP/saved_cost.yaml" <<YAML
+description: "Kuberacle estimated cost avoided by answer cache (USD)"
+filter: '${BASE_FILTER}'
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: "1"
+valueExtractor: EXTRACT(jsonPayload.saved_cost_estimate)
+bucketOptions:
+  exponentialBuckets:
+    numFiniteBuckets: 64
+    growthFactor: 1.4
+    scale: 0.0001
+YAML
+
 gcloud logging metrics create kuberacle_requests \
   --project "$PROJECT" --config-from-file="$TMP/requests.yaml"
 gcloud logging metrics create kuberacle_request_latency_ms \
   --project "$PROJECT" --config-from-file="$TMP/latency.yaml"
 gcloud logging metrics create kuberacle_request_cost_usd \
   --project "$PROJECT" --config-from-file="$TMP/cost.yaml"
+gcloud logging metrics create kuberacle_cache_requests \
+  --project "$PROJECT" --config-from-file="$TMP/cache_requests.yaml"
+gcloud logging metrics create kuberacle_saved_cost_usd \
+  --project "$PROJECT" --config-from-file="$TMP/saved_cost.yaml"
 
-echo "Created log-based metrics: kuberacle_requests, kuberacle_request_latency_ms, kuberacle_request_cost_usd"
+echo "Created log-based metrics: kuberacle_requests, kuberacle_request_latency_ms, kuberacle_request_cost_usd, kuberacle_cache_requests, kuberacle_saved_cost_usd"
