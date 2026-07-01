@@ -6,25 +6,71 @@
       {
         "xPos": 0,
         "yPos": 0,
-        "width": 6,
-        "height": 4,
+        "width": 3,
+        "height": 3,
         "widget": {
-          "title": "Request rate by outcome",
-          "xyChart": {
-            "dataSets": [
-              {
-                "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_requests\" resource.type=\"cloud_run_revision\"",
-                    "aggregation": {
-                      "alignmentPeriod": "300s",
-                      "perSeriesAligner": "ALIGN_RATE",
-                      "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["metric.label.outcome"]
-                    }
+          "title": "Requests",
+          "scorecard": {
+            "timeSeriesQuery": {
+              "outputFullDuration": true,
+              "timeSeriesFilter": {
+                "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_requests\" resource.type=\"cloud_run_revision\"",
+                "aggregation": {
+                  "alignmentPeriod": "60s",
+                  "perSeriesAligner": "ALIGN_DELTA",
+                  "crossSeriesReducer": "REDUCE_SUM"
+                }
+              }
+            },
+            "sparkChartView": {
+              "sparkChartType": "SPARK_LINE"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 3,
+        "yPos": 0,
+        "width": 3,
+        "height": 3,
+        "widget": {
+          "title": "Answer-cache hit rate",
+          "scorecard": {
+            "timeSeriesQuery": {
+              "outputFullDuration": true,
+              "timeSeriesFilterRatio": {
+                "numerator": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_cache_requests\" resource.type=\"cloud_run_revision\" metric.label.\"cache_hit\"=\"true\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_DELTA",
+                    "crossSeriesReducer": "REDUCE_SUM"
                   }
                 },
-                "plotType": "STACKED_BAR"
+                "denominator": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_cache_requests\" resource.type=\"cloud_run_revision\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_DELTA",
+                    "crossSeriesReducer": "REDUCE_SUM"
+                  }
+                }
+              }
+            },
+            "gaugeView": {
+              "lowerBound": 0.0,
+              "upperBound": 1.0
+            },
+            "thresholds": [
+              {
+                "value": 0.5,
+                "color": "RED",
+                "direction": "BELOW"
+              },
+              {
+                "value": 0.75,
+                "color": "YELLOW",
+                "direction": "BELOW"
               }
             ]
           }
@@ -33,77 +79,57 @@
       {
         "xPos": 6,
         "yPos": 0,
-        "width": 6,
-        "height": 4,
+        "width": 3,
+        "height": 3,
         "widget": {
-          "title": "Request latency p50 / p95 (ms)",
-          "xyChart": {
-            "dataSets": [
-              {
-                "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_request_latency_ms\" resource.type=\"cloud_run_revision\"",
-                    "aggregation": {
-                      "alignmentPeriod": "300s",
-                      "perSeriesAligner": "ALIGN_PERCENTILE_50"
-                    }
-                  }
-                },
-                "plotType": "LINE"
-              },
-              {
-                "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_request_latency_ms\" resource.type=\"cloud_run_revision\"",
-                    "aggregation": {
-                      "alignmentPeriod": "300s",
-                      "perSeriesAligner": "ALIGN_PERCENTILE_95"
-                    }
-                  }
-                },
-                "plotType": "LINE"
+          "title": "Cost avoided by cache (30d)",
+          "scorecard": {
+            "timeSeriesQuery": {
+              "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/kuberacle_saved_cost_usd' | within 30d | align delta(30d) | every 30d | group_by [], [val: sum(value.kuberacle_saved_cost_usd)]"
+            },
+            "sparkChartView": {
+              "sparkChartType": "SPARK_LINE"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 9,
+        "yPos": 0,
+        "width": 3,
+        "height": 3,
+        "widget": {
+          "title": "Cold starts",
+          "scorecard": {
+            "timeSeriesQuery": {
+              "outputFullDuration": true,
+              "timeSeriesFilter": {
+                "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_requests\" resource.type=\"cloud_run_revision\" metric.label.\"cold_start\"=\"true\"",
+                "aggregation": {
+                  "alignmentPeriod": "60s",
+                  "perSeriesAligner": "ALIGN_DELTA",
+                  "crossSeriesReducer": "REDUCE_SUM"
+                }
               }
-            ]
+            },
+            "sparkChartView": {
+              "sparkChartType": "SPARK_LINE"
+            }
           }
         }
       },
       {
         "xPos": 0,
-        "yPos": 4,
+        "yPos": 3,
         "width": 6,
         "height": 4,
         "widget": {
-          "title": "Estimated cost per day (USD)",
+          "title": "Requests by outcome",
           "xyChart": {
             "dataSets": [
               {
                 "timeSeriesQuery": {
-                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/kuberacle_request_cost_usd' | align delta(1d) | every 1d | group_by [], [total: sum(value.kuberacle_request_cost_usd)]"
-                },
-                "plotType": "LINE"
-              }
-            ]
-          }
-        }
-      },
-      {
-        "xPos": 6,
-        "yPos": 4,
-        "width": 3,
-        "height": 4,
-        "widget": {
-          "title": "Errors (5m)",
-          "xyChart": {
-            "dataSets": [
-              {
-                "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_requests\" resource.type=\"cloud_run_revision\" metric.label.outcome=\"error\"",
-                    "aggregation": {
-                      "alignmentPeriod": "300s",
-                      "perSeriesAligner": "ALIGN_SUM"
-                    }
-                  }
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/kuberacle_requests' | align delta(1d) | every 1d | group_by [metric.outcome], [val: sum(value.kuberacle_requests)]"
                 },
                 "plotType": "STACKED_BAR"
               }
@@ -112,23 +138,64 @@
         }
       },
       {
-        "xPos": 9,
-        "yPos": 4,
-        "width": 3,
+        "xPos": 6,
+        "yPos": 3,
+        "width": 6,
         "height": 4,
         "widget": {
-          "title": "Cold starts (5m)",
+          "title": "Request latency p95 (ms)",
           "xyChart": {
             "dataSets": [
               {
                 "timeSeriesQuery": {
-                  "timeSeriesFilter": {
-                    "filter": "metric.type=\"logging.googleapis.com/user/kuberacle_requests\" resource.type=\"cloud_run_revision\" metric.label.cold_start=\"true\"",
-                    "aggregation": {
-                      "alignmentPeriod": "300s",
-                      "perSeriesAligner": "ALIGN_SUM"
-                    }
-                  }
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/kuberacle_request_latency_ms' | align delta(1d) | every 1d | group_by [], [p95: percentile(value.kuberacle_request_latency_ms, 95)]"
+                },
+                "plotType": "STACKED_BAR",
+                "legendTemplate": "p95"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 7,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Daily cost: paid vs cache-saved (USD)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/kuberacle_request_cost_usd' | align delta(1d) | every 1d | group_by [], [paid: sum(value.kuberacle_request_cost_usd)]"
+                },
+                "plotType": "STACKED_BAR",
+                "legendTemplate": "paid"
+              },
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/kuberacle_saved_cost_usd' | align delta(1d) | every 1d | group_by [], [saved_by_cache: sum(value.kuberacle_saved_cost_usd)]"
+                },
+                "plotType": "STACKED_BAR",
+                "legendTemplate": "saved by cache"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 7,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Cache: hits vs misses",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/kuberacle_cache_requests' | align delta(1d) | every 1d | group_by [metric.cache_hit], [val: sum(value.kuberacle_cache_requests)]"
                 },
                 "plotType": "STACKED_BAR"
               }
