@@ -85,9 +85,19 @@ bash deploy/observability/create_uptime_check.sh
 - **Logs:** structured JSON in Cloud Logging, each request line trace-correlated
   to its Cloud Trace span. Query: `jsonPayload.event="request_summary"`.
 - **Metrics (log-based):** request count by outcome, p50/p95 latency, estimated
-  cost per request, and abstention/error rates.
-- **Dashboard:** `Kuberacle - serving` (RED, cost/day, per-stage latency,
-  outcomes, cold starts).
+  cost per request, abstention/error rates, answer-cache requests by
+  `cache_hit`, and estimated cost avoided by cache hits.
+- **Dashboard:** `Kuberacle - serving` - a KPI strip (requests, answer-cache
+  hit-rate gauge, cost avoided by cache, cold starts) over daily charts
+  (requests by outcome, p95 latency, daily paid-vs-cache-saved cost, cache hits
+  vs misses). Requests, hit rate, and cold starts follow the dashboard
+  time-picker via filter-based queries with `outputFullDuration`. The
+  cost-avoided scorecard stays on MQL, because its saved-cost metric is a
+  DISTRIBUTION and only MQL `sum()` reduces a distribution to a scalar dollar
+  total; MQL scorecards do not honor `outputFullDuration`, so it is pinned to a
+  rolling 30-day window (reflected in its `(30d)` title). The daily charts
+  align at day granularity and follow the picker; the paid-vs-cache-saved chart
+  stacks two bar datasets so bar height reads as the estimated no-cache cost.
 - **Alerts:** error-rate, estimated daily cost ceiling, p95 latency, and uptime.
 - **Error Reporting:** API exceptions group automatically from the ERROR-severity
   stack traces the structured logger emits.
