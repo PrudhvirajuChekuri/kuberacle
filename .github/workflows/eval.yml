@@ -2,6 +2,11 @@ name: rag-evaluation
 
 on:
   pull_request:
+    paths:
+      - "src/**"
+      - "configs/**"
+      - "evals/**"
+      - ".github/workflows/eval.yml"
   workflow_dispatch:
 
 env:
