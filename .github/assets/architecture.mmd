@@ -1,0 +1,47 @@
+flowchart TD
+    U([💬 User question]) --> W["🌐 Web UI\nNext.js on Cloud Run · Turnstile widget"]
+    W --> PX["Auth proxy\nthe FastAPI service is private ·\nreachable only through this proxy"]
+    PX --> T["Guardrails\nTurnstile verify → per-IP cap check\nFirestore daily counters"]
+    T -->|fail| RJ(["🚫 Rejected\n403 bot check · 429 rate limited"])
+    T -->|pass| C{"Answer cache\nFirestore · exact match on normalized question\n+ index version + answer-config fingerprint\n(populated by verified answers + abstentions)"}
+    C -->|"hit · free, charges per-IP only"| RP(["🔁 Cached answer + citations replayed"])
+    C -->|"miss · charges both caps atomically"| G["Relevance gate\ngemini-2.5-flash-lite · constrained enum decoding\nfails open on any error"]
+    G -->|out of scope| AB1(["🚫 Abstention · out of scope\nquestion is off-topic · no retrieval run"])
+    G -->|in scope| RET
+
+    subgraph RET["Hybrid retrieval"]
+        direction TB
+        SEM["Semantic search\ngemini-embedding-001 → ChromaDB · top 10"]
+        BM["Lexical search\nBM25 · top 10"]
+        SEM --> MG["Weighted score fusion\n0.6 semantic + 0.4 lexical → top 20"]
+        BM --> MG
+        MG --> RR["Rerank\nDiscovery Engine semantic ranker → top 5\nfalls back to fused order on failure"]
+    end
+
+    subgraph IDX["Index pipeline (weekly + on demand)"]
+        direction TB
+        FP{"Drift check\nupstream doc blob SHAs + index-build code fingerprint"}
+        FP -->|no change| SKIP(["✅ Nothing to do"])
+        FP -->|changed| DL["Download k8s docs\nkubernetes/website · v1.36"]
+        DL --> PP["Preprocess\nfrontmatter · Hugo shortcodes · structural chunking"]
+        PP --> ING["Ingest\nembed + upsert into ChromaDB"]
+        ING --> EG{"Eval gate\nfull deterministic benchmark"}
+        EG -->|fail| NOPUB(["❌ Not published"])
+        EG -->|pass| PUB["Publish immutable versioned artifact\nGCS: tarball + manifest + sha256 digest"]
+    end
+    PUB -->|"pulled at startup · manifest validated\nagainst running config, boot fails on mismatch"| RET
+
+    RET --> CH{Any chunks retrieved?}
+    CH -->|no| AB2(["🚫 Abstention · no evidence\nno supporting docs found · no citations"])
+    CH -->|yes| GEN["Answer generation\ngemini-2.5-flash-lite · streamed token-by-token over SSE"]
+    GEN --> V{"Citation validation\nevery inline marker must map to a retrieved chunk\nand clear the evidence threshold"}
+    V -->|verified| OK(["✅ Answer + citations"])
+    V -->|unverified| UG(["⚠️ Answer kept, flagged ungrounded\nnever cached"])
+
+    GEN --> LOG
+    subgraph OBS["Observability (per request)"]
+        direction TB
+        LOG["request_summary structured event + distributed trace\nper-stage latency · tokens · estimated cost · outcome"]
+        LOG --> OPS["GCP ops plane\nCloud Logging → log-based metrics · dashboard · alerts\nCloud Trace · Error Reporting"]
+        LOG --> LF["Langfuse LLM plane\nper-query trace with question, chunks + answer\ntoken costs · versioned prompt management"]
+    end
