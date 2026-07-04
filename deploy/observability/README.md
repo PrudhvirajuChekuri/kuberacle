@@ -1,21 +1,49 @@
 # Observability deploy assets
 
 Reproducible definitions for the operational plane (Cloud Logging, Cloud
-Monitoring, Cloud Trace, Error Reporting). Everything here is derived from the
-single `request_summary` structured log event the API emits per request, so the
-metrics, dashboard, and alerts stay in version control rather than as
-click-ops in the console.
+Monitoring, Cloud Trace, Error Reporting). The log-based metrics, dashboard, and
+request alerts are derived from the single `request_summary` structured log
+event the API emits per request; the uptime check probes the public site, Cloud
+Trace spans are OpenTelemetry exports, and Error Reporting groups error logs.
+Everything stays in version control rather than as click-ops in the console.
 
-The LLM/product plane (per-query token cost, the retrieval -> rerank ->
-generation trace, prompt versions) lives in Langfuse and is configured by env
-vars on the service, not here.
+The LLM/product plane (per-query token cost, the gate -> retrieval (semantic,
+bm25, merge, rerank) -> generation trace, prompt versions) lives in Langfuse and
+is configured by env vars on the service, not here.
+
+## What it looks like
+
+![Kuberacle - serving dashboard in Cloud Monitoring: KPI strip for requests,
+answer-cache hit rate, cost avoided by cache, and cold starts, above daily
+charts for requests by outcome, p95 latency, paid-vs-cache-saved cost, and cache
+hits vs misses](../../.github/assets/observability-dashboard.png)
+
+*The `Kuberacle - serving` Cloud Monitoring dashboard: a KPI strip (requests,
+answer-cache hit rate, cost avoided by cache, cold starts) over daily charts for
+requests by outcome, p95 latency, paid-vs-cache-saved cost, and cache hits vs
+misses. Defined in `dashboard.json`.*
+
+![Langfuse trace for a single query, showing the gate -> retrieval (semantic,
+bm25, merge, rerank) -> generation span tree with per-stage latency and cost
+alongside the grounded answer](../../.github/assets/observability-trace.png)
+
+*A single request in Langfuse: each pipeline stage is its own span with its own
+latency, and the billed stages carry cost metadata that `cost_usd` totals by
+stage (gate, embed, rerank, generation).*
+
+![Langfuse cost view over the same traces, with total cost, cost by model, and
+cost by environment](../../.github/assets/observability-llm-cost.png)
+
+*Langfuse's built-in cost view aggregates the same traces, breaking spend down by
+model and environment, a per-query cost lens the Cloud Monitoring dashboard does
+not provide.*
 
 ## Prerequisites
 
 Set these once for the commands below:
 
 ```bash
-export PROJECT=project-d8548532-f717-4b4d-a95
+export PROJECT=<your-project-id>
 export REGION=us-central1
 export SERVICE=k8s-rag-api
 ```
@@ -24,6 +52,7 @@ export SERVICE=k8s-rag-api
 
 ```bash
 gcloud services enable monitoring.googleapis.com cloudtrace.googleapis.com \
+  logging.googleapis.com secretmanager.googleapis.com \
   --project "$PROJECT"
 
 # The API service account exports spans to Cloud Trace.
@@ -70,10 +99,10 @@ bash deploy/observability/create_log_metrics.sh
 gcloud monitoring dashboards create \
   --project "$PROJECT" --config-from-file=deploy/observability/dashboard.json
 
-# Create a notification channel for the budget-alert email, then capture its id.
+# Create a notification channel for the ops-alert email, then capture its id.
 export NOTIFICATION_CHANNEL=$(gcloud beta monitoring channels create \
   --project "$PROJECT" --display-name="kuberacle ops email" \
-  --type=email --channel-labels=email_address=<your-budget-alert-email> \
+  --type=email --channel-labels=email_address=<your-ops-alert-email> \
   --format='value(name)')
 
 bash deploy/observability/create_alerts.sh
@@ -98,12 +127,13 @@ bash deploy/observability/create_uptime_check.sh
   rolling 30-day window (reflected in its `(30d)` title). The daily charts
   align at day granularity and follow the picker; the paid-vs-cache-saved chart
   stacks two bar datasets so bar height reads as the estimated no-cache cost.
-- **Alerts:** error-rate, estimated daily cost ceiling, p95 latency, and uptime.
+- **Alerts:** error-rate, per-request cost anomaly, p95 latency, and uptime.
 - **Error Reporting:** API exceptions group automatically from the ERROR-severity
   stack traces the structured logger emits.
 
 ## Cost
 
 All of this stays within GCP free tiers at the 300/day global cap (Cloud Logging
-50 GiB/mo ingest, Cloud Trace 2.5M spans/mo, log-based metrics free). Langfuse
-runs on its free Hobby tier.
+50 GiB/mo ingest, Cloud Trace 2.5M spans/mo, and the user-defined log-based
+metrics within Monitoring's free metric allotment). Langfuse runs on its free
+Hobby tier.

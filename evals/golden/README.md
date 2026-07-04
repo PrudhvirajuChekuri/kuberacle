@@ -53,8 +53,8 @@ near-miss precision cases. All cases reference chunks from the full corpus
 index. CI runs evaluate against the full index downloaded from GCS - no
 separate smoke corpus or ingestion step is needed.
 
-`v2.jsonl` is built around the full dataset configuration, which discovers
-Kubernetes docs from:
+`v2.jsonl` is built around the full dataset configuration
+(`configs/datasets/full.yaml`), which discovers Kubernetes docs from:
 
 - `concepts`
 - `tasks`

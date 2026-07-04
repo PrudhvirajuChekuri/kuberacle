@@ -235,11 +235,38 @@ class RAGConfig:
     observability: ObservabilityConfig
 
 
+def _require(data: dict, path: str):
+    """Return the value at a dotted key path, failing loudly when absent.
+
+    Every key in ``configs/rag.yaml`` is required: a silent fallback default
+    would create a second source of config truth and let a typo'd key quietly
+    change runtime behavior.
+
+    Args:
+        data: Parsed YAML mapping.
+        path: Dotted key path (e.g. ``retrieval.semantic_top_k``).
+
+    Returns:
+        The value stored at the path.
+
+    Raises:
+        RuntimeError: When any segment of the path is missing.
+    """
+    node = data
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            raise RuntimeError(f"Missing required config key '{path}' in rag.yaml.")
+        node = node[part]
+    return node
+
+
 def load_rag_config(config_path: str | Path) -> RAGConfig:
     """Load RAG YAML config into a typed object.
 
     GCP project and location are read from the GCP_PROJECT and GCP_LOCATION
-    environment variables. All other values come from the YAML file.
+    environment variables. All other values come from the YAML file, and every
+    key is required: the YAML is the single source of config truth, so there
+    are no in-code fallback defaults.
 
     Args:
         config_path: Path to ``configs/rag.yaml``.
@@ -262,38 +289,8 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
     with open(config_path, "r", encoding="utf-8") as file:
         data = yaml.safe_load(file)
 
-    embedding = data.get("embedding", {})
-    retrieval = data.get("retrieval", {})
-    reranker = data.get("reranker", {})
-    citation = data.get("citation", {})
-    gate = data.get("gate", {})
-    prompts = data.get("prompts", {})
-    evaluation = data.get("evaluation", {})
-    pricing = data.get("pricing", {})
-    observability = data.get("observability", {})
-    obs_logging = observability.get("logging", {})
-    obs_tracing = observability.get("tracing", {})
-
-    try:
-        embedding_model_id = data["models"]["embedding"]
-        generation_model_id = data["models"]["generation"]
-    except KeyError as exc:
-        raise RuntimeError(f"Missing required config key under 'models': {exc}") from exc
-
-    try:
-        collection_name = data["vector_store"]["collection_name"]
-        persist_directory = data["vector_store"]["persist_directory"]
-    except KeyError as exc:
-        raise RuntimeError(f"Missing required config key under 'vector_store': {exc}") from exc
-
-    try:
-        temperature = float(data["generation"]["temperature"])
-        max_tokens = int(data["generation"]["max_tokens"])
-    except KeyError as exc:
-        raise RuntimeError(f"Missing required config key under 'generation': {exc}") from exc
-
-    hybrid_weight_semantic = float(retrieval.get("hybrid_weight_semantic", 0.6))
-    hybrid_weight_lexical = float(retrieval.get("hybrid_weight_lexical", 0.4))
+    hybrid_weight_semantic = float(_require(data, "retrieval.hybrid_weight_semantic"))
+    hybrid_weight_lexical = float(_require(data, "retrieval.hybrid_weight_lexical"))
     if abs(hybrid_weight_semantic + hybrid_weight_lexical - 1.0) > 1e-9:
         raise RuntimeError(
             f"hybrid_weight_semantic ({hybrid_weight_semantic}) + "
@@ -304,106 +301,106 @@ def load_rag_config(config_path: str | Path) -> RAGConfig:
         gcp_project=gcp_project,
         gcp_location=gcp_location,
         embedding=EmbeddingConfig(
-            model_id=embedding_model_id,
-            output_dimensionality=int(embedding.get("output_dimensionality", 768)),
+            model_id=_require(data, "models.embedding"),
+            output_dimensionality=int(_require(data, "embedding.output_dimensionality")),
         ),
         generation=GenerationConfig(
-            model_id=generation_model_id,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            model_id=_require(data, "models.generation"),
+            temperature=float(_require(data, "generation.temperature")),
+            max_tokens=int(_require(data, "generation.max_tokens")),
         ),
         vector_store=VectorStoreConfig(
-            collection_name=collection_name,
-            persist_directory=persist_directory,
+            collection_name=_require(data, "vector_store.collection_name"),
+            persist_directory=_require(data, "vector_store.persist_directory"),
         ),
         retrieval=RetrievalConfig(
-            semantic_top_k=int(retrieval.get("semantic_top_k", 5)),
-            lexical_top_k=int(retrieval.get("lexical_top_k", 5)),
-            merged_top_k=int(retrieval.get("merged_top_k", 10)),
-            final_top_k=int(retrieval.get("final_top_k", 5)),
+            semantic_top_k=int(_require(data, "retrieval.semantic_top_k")),
+            lexical_top_k=int(_require(data, "retrieval.lexical_top_k")),
+            merged_top_k=int(_require(data, "retrieval.merged_top_k")),
+            final_top_k=int(_require(data, "retrieval.final_top_k")),
             hybrid_weight_semantic=hybrid_weight_semantic,
             hybrid_weight_lexical=hybrid_weight_lexical,
-            min_evidence_score=float(retrieval.get("min_evidence_score", 0.0)),
-            min_supporting_chunks=int(retrieval.get("min_supporting_chunks", 1)),
+            min_evidence_score=float(_require(data, "retrieval.min_evidence_score")),
+            min_supporting_chunks=int(_require(data, "retrieval.min_supporting_chunks")),
         ),
         reranker=RerankerConfig(
-            enabled=reranker.get("enabled", False),
-            ranking_config=reranker.get("ranking_config", "default_ranking_config"),
-            model=reranker.get("model", "semantic-ranker-default@latest"),
+            enabled=bool(_require(data, "reranker.enabled")),
+            ranking_config=_require(data, "reranker.ranking_config"),
+            model=_require(data, "reranker.model"),
         ),
         citation=CitationConfig(
-            strict_used_only=citation.get("strict_used_only", True),
-            deduplicate=citation.get("deduplicate", True),
+            strict_used_only=bool(_require(data, "citation.strict_used_only")),
+            deduplicate=bool(_require(data, "citation.deduplicate")),
         ),
         gate=GateConfig(
-            enabled=gate.get("enabled", False),
-            model_id=gate.get("model", generation_model_id),
+            enabled=bool(_require(data, "gate.enabled")),
+            model_id=_require(data, "gate.model"),
         ),
         prompts=PromptConfig(
-            version=prompts.get("version", "v1"),
-            directory=prompts.get("directory", "configs/prompts"),
+            version=_require(data, "prompts.version"),
+            directory=_require(data, "prompts.directory"),
         ),
         evaluation=EvalConfig(
-            dataset_path=evaluation.get("dataset_path", "evals/golden/v2.jsonl"),
+            dataset_path=_require(data, "evaluation.dataset_path"),
             retrieval_recall_at_k_threshold=float(
-                evaluation.get("retrieval_recall_at_k_threshold", 0.70)
+                _require(data, "evaluation.retrieval_recall_at_k_threshold")
             ),
-            mrr_threshold=float(evaluation.get("mrr_threshold", 0.70)),
+            mrr_threshold=float(_require(data, "evaluation.mrr_threshold")),
             abstention_accuracy_threshold=float(
-                evaluation.get("abstention_accuracy_threshold", 0.90)
+                _require(data, "evaluation.abstention_accuracy_threshold")
             ),
             non_empty_answer_rate_threshold=float(
-                evaluation.get("non_empty_answer_rate_threshold", 0.90)
+                _require(data, "evaluation.non_empty_answer_rate_threshold")
             ),
             faithfulness_threshold=float(
-                evaluation.get("faithfulness_threshold", 0.90)
+                _require(data, "evaluation.faithfulness_threshold")
             ),
-            faithfulness_judge_model=evaluation.get(
-                "faithfulness_judge_model", "gemini-2.5-flash"
+            faithfulness_judge_model=_require(
+                data, "evaluation.faithfulness_judge_model"
             ),
             faithfulness_min_parsed=int(
-                evaluation.get("faithfulness_min_parsed", 10)
+                _require(data, "evaluation.faithfulness_min_parsed")
             ),
             context_precision_threshold=float(
-                evaluation.get("context_precision_threshold", 0.85)
+                _require(data, "evaluation.context_precision_threshold")
             ),
-            context_precision_judge_model=evaluation.get(
-                "context_precision_judge_model", "gemini-2.5-flash"
+            context_precision_judge_model=_require(
+                data, "evaluation.context_precision_judge_model"
             ),
             context_precision_min_parsed=int(
-                evaluation.get("context_precision_min_parsed", 10)
+                _require(data, "evaluation.context_precision_min_parsed")
             ),
             answer_relevancy_threshold=float(
-                evaluation.get("answer_relevancy_threshold", 0.80)
+                _require(data, "evaluation.answer_relevancy_threshold")
             ),
-            answer_relevancy_judge_model=evaluation.get(
-                "answer_relevancy_judge_model", "gemini-2.5-flash"
+            answer_relevancy_judge_model=_require(
+                data, "evaluation.answer_relevancy_judge_model"
             ),
-            answer_relevancy_embedding_model=evaluation.get(
-                "answer_relevancy_embedding_model", "gemini-embedding-001"
+            answer_relevancy_embedding_model=_require(
+                data, "evaluation.answer_relevancy_embedding_model"
             ),
             answer_relevancy_min_parsed=int(
-                evaluation.get("answer_relevancy_min_parsed", 10)
+                _require(data, "evaluation.answer_relevancy_min_parsed")
             ),
         ),
         pricing=PricingConfig(
             generation_input_per_1m_usd=float(
-                pricing.get("generation_input_per_1m_usd", 0.10)
+                _require(data, "pricing.generation_input_per_1m_usd")
             ),
             generation_output_per_1m_usd=float(
-                pricing.get("generation_output_per_1m_usd", 0.40)
+                _require(data, "pricing.generation_output_per_1m_usd")
             ),
             embedding_input_per_1m_usd=float(
-                pricing.get("embedding_input_per_1m_usd", 0.15)
+                _require(data, "pricing.embedding_input_per_1m_usd")
             ),
             reranker_per_1k_queries_usd=float(
-                pricing.get("reranker_per_1k_queries_usd", 1.00)
+                _require(data, "pricing.reranker_per_1k_queries_usd")
             ),
         ),
         observability=ObservabilityConfig(
-            service_name=str(observability.get("service_name", "kuberacle-api")),
-            log_level=str(obs_logging.get("level", "INFO")),
-            log_format=str(obs_logging.get("format", "json")),
-            trace_sample_ratio=float(obs_tracing.get("sample_ratio", 1.0)),
+            service_name=str(_require(data, "observability.service_name")),
+            log_level=str(_require(data, "observability.logging.level")),
+            log_format=str(_require(data, "observability.logging.format")),
+            trace_sample_ratio=float(_require(data, "observability.tracing.sample_ratio")),
         ),
     )

@@ -77,4 +77,4 @@ for f in errors latency cost; do
     --policy-from-file="$TMP/$f.json"
 done
 
-echo "Created alert policies: errors, p95 latency, daily cost ceiling"
+echo "Created alert policies: errors, p95 latency, per-request cost anomaly"

@@ -2,6 +2,7 @@
 
 Kuberacle is a Next.js chat interface for the [kuberacle](../README.md) pipeline. It streams
 grounded answers token-by-token and renders citations as clickable source cards.
+Live at [kuberacle.dev](https://kuberacle.dev).
 
 ## Stack
 
@@ -22,7 +23,7 @@ grounded answers token-by-token and renders citations as clickable source cards.
 
 ## Run locally
 
-The backend must be running first (see the [root README](../README.md#run-the-api)):
+The backend must be running first (see the [root README](../README.md#5-run-the-api)):
 
 ```bash
 python -m kuberacle serve      # backend, from the repo root
