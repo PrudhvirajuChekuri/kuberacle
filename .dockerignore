@@ -1,6 +1,6 @@
 # Single build context (repo root) is shared by both images, so excludes are by
-# specific subpath. Kept on purpose: web/ source, src/, configs/,
-# data/vector/chroma_gemini (baked index), data/k8s_version.txt (build-time version).
+# specific subpath. Kept on purpose: web/ source, src/, configs/. The Chroma
+# index is not baked into either image; the API pulls it from GCS at startup.
 
 # Secrets / env (credentials are mounted at runtime, never copied in)
 .env
@@ -24,7 +24,7 @@ web/.next/
 # Tests and dev-only assets
 tests/
 
-# Raw and derived corpus data (not needed at runtime; index is baked separately)
+# Raw and derived corpus data (not needed in an image; the index is pulled from GCS)
 data/raw/
 data/processed/
 data/examples/
