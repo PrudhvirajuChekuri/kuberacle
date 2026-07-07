@@ -22,12 +22,11 @@
 
 > Every answer is backed by the official Kubernetes documentation, cited inline, and flagged when its citations don't check out. If the docs don't support an answer, Kuberacle tells you that instead of making one up.
 
-https://github.com/user-attachments/assets/dfdae900-d97b-4637-ad60-15e723aba2ce
-
 ---
 
 ## Table of Contents
 
+0. [Demo](#0-demo)
 1. [Architecture](#1-architecture)
 2. [Design Decisions](#2-design-decisions)
 3. [Repository Structure](#3-repository-structure)
@@ -44,6 +43,12 @@ https://github.com/user-attachments/assets/dfdae900-d97b-4637-ad60-15e723aba2ce
 
 ---
 
+## 0. Demo
+
+https://github.com/user-attachments/assets/dfdae900-d97b-4637-ad60-15e723aba2ce
+
+---
+
 ## 1. Architecture
 
 Two loosely coupled halves: a **serving path** that answers questions, and an **index pipeline** that builds what it serves. Images carry no index; the API pulls a pinned, validated index version from GCS at startup.
@@ -55,9 +60,18 @@ Two loosely coupled halves: a **serving path** that answers questions, and an **
 <!-- Editable source for this diagram: .github/assets/architecture.mmd -->
 
 
-**Serving flow.** A question enters through the Next.js Web UI on Cloud Run and reaches the API only through an auth proxy that keeps the FastAPI service private. Guardrails run first: Turnstile verification, then a read-only per-IP cap check, so an over-cap client never reaches the cache. The answer cache is exact-match: a hit replays the stored answer and citations for free (charging only per-IP budget), while a miss charges both the per-IP and global daily caps in one atomic Firestore transaction before any paid work runs. Past the cache, the relevance gate classifies the question with constrained enum decoding (failing open on any error) and abstains on out-of-scope questions without touching retrieval. In-scope questions run hybrid retrieval with the numbers shown: 10 semantic and 10 lexical candidates, fused to 20, then reranked to a top-5 context; empty retrieval is the second abstention trigger. Generation streams tokens live, and only afterwards are the answer's inline citation markers validated, so an answer that fails validation stays on screen but is flagged as ungrounded. The three cacheable outcomes, a verified answer and both abstentions, are written back to the cache; ungrounded answers never are, so a retry can improve them. Throughout, every request emits a single `request_summary` event and distributed trace, fanned to a GCP ops plane and to Langfuse; the [Observability](#9-observability) section covers both planes. Any mid-stream failure surfaces as an SSE `error` event.
+**Serving flow.** A question enters through the Next.js Web UI on Cloud Run and reaches the API only through an auth proxy that keeps the FastAPI service private. From there it runs a fixed path:
 
-**Index flow.** A weekly job fingerprints the upstream docs (git blob SHAs) and the index-affecting build code; when either drifts, it rebuilds, gates the result on the full deterministic benchmark, and publishes an immutable versioned artifact to GCS. Production pins one exact `INDEX_VERSION`: the API pulls it at startup, verifies the tarball digest and the manifest's compatibility with the running config, and refuses to boot on a mismatch. Rolling a new version into production is a deliberate human step.
+1. **Guardrails.** Turnstile verification, then a read-only per-IP cap check, so an over-cap client never reaches the cache.
+2. **Answer cache (exact match).** A hit replays the stored answer and citations for free, charging only the per-IP budget; a miss charges both the per-IP and global daily caps in one atomic Firestore transaction before any paid work runs.
+3. **Relevance gate.** The question is classified with constrained enum decoding (failing open on any error); out-of-scope questions abstain here without touching retrieval.
+4. **Hybrid retrieval.** 10 semantic and 10 lexical candidates, fused to 20, then reranked to a top-5 context. Empty retrieval is the second abstention trigger.
+5. **Generation and citation check.** Tokens stream live, and only afterwards are the inline citation markers validated, so an answer that fails validation stays on screen but is flagged as ungrounded.
+6. **Cache write-back.** The three cacheable outcomes, a verified answer and both abstentions, are stored; ungrounded answers never are, so a retry can improve them.
+
+Throughout, every request emits a single `request_summary` event and distributed trace, fanned to a GCP ops plane and to Langfuse (see [Observability](#9-observability)).
+
+**Index flow.** A weekly job fingerprints the upstream docs (git blob SHAs) and the index-affecting build code; when either drifts, it rebuilds, gates the result on the full deterministic benchmark, and publishes an immutable versioned artifact to GCS. Production pins one exact `INDEX_VERSION`: the API pulls it at startup, verifies the tarball digest and the manifest's compatibility with the running config, and refuses to boot on a mismatch. Promoting a new version to production is always a deliberate call, never something that happens on its own.
 
 ---
 
