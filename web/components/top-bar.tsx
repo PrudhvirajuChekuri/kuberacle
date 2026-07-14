@@ -1,6 +1,7 @@
 "use client";
 
 import { Brand } from "@/components/brand";
+import { SocialLinks } from "@/components/social-links";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useK8sVersion } from "@/components/version-provider";
 
@@ -15,6 +16,7 @@ export function TopBar({ onHome }: { onHome?: () => void }) {
           <span className="h-1.5 w-1.5 rounded-full bg-[#21c07a] shadow-[0_0_0_3px_color-mix(in_srgb,#21c07a_22%,transparent)]" />
           {k8sVersion}
         </div>
+        <SocialLinks />
         <ThemeToggle />
       </div>
     </header>
